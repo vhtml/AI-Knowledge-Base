@@ -1,0 +1,13 @@
+.DS_Store
+
+# python
+.env
+.env.*
+__pycache__/
+.venv/
+
+# editor
+.idea
+
+# frontend
+node_modules/
