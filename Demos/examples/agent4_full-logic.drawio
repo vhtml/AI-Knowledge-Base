@@ -1,0 +1,397 @@
+<mxfile host="app.diagrams.net" agent="Cursor">
+  <diagram id="layers" name="模块分层与调用">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+
+        <mxCell id="title" value="agent4_full.py 逻辑结构 · 模块分层与调用关系" style="text;html=1;fontSize=18;fontStyle=1;align=left;verticalAlign=middle;fontColor=#1a365d;" vertex="1" parent="1">
+          <mxGeometry x="40" y="20" width="720" height="36" as="geometry"/>
+        </mxCell>
+        <mxCell id="subtitle" value="Responses API Agent：推理 → 工具执行 → 继续推理；工具经注册表统一分发" style="text;html=1;fontSize=12;align=left;fontColor=#4a5568;" vertex="1" parent="1">
+          <mxGeometry x="40" y="52" width="720" height="24" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="lane-runtime" value="运行时调用栈" style="swimlane;startSize=32;fillColor=#edf2f7;strokeColor=#718096;fontStyle=1;fontColor=#2d3748;whiteSpace=wrap;pointerEvents=0;" vertex="1" parent="1">
+          <mxGeometry x="40" y="90" width="720" height="940" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="n-main" value="入口&#10;if __name__ == &quot;__main__&quot;: chat()" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#c6f6d5;strokeColor=#38a169;fontStyle=1;" vertex="1" parent="lane-runtime">
+          <mxGeometry x="200" y="48" width="320" height="60" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="n-chat" value="6. Agent 主循环 chat()&#10;维护 history · 读取皇上输入 · 最多 MAX_TOOL_ROUNDS+1 轮" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#bee3f8;strokeColor=#3182ce;" vertex="1" parent="lane-runtime">
+          <mxGeometry x="160" y="148" width="400" height="70" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="n-llm" value="OpenAI Responses API&#10;client.responses.create(model, instructions, input=history, tools=TOOLS)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e9d8fd;strokeColor=#805ad5;" vertex="1" parent="lane-runtime">
+          <mxGeometry x="160" y="258" width="400" height="70" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="n-exec" value="5. execute_tool_calls(response)&#10;遍历 response.output 中 type=function_call 的项&#10;组装 function_call_output(call_id, output)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#bee3f8;strokeColor=#3182ce;" vertex="1" parent="lane-runtime">
+          <mxGeometry x="160" y="368" width="400" height="80" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="n-dispatch" value="4. dispatch_tool(item)&#10;解析 arguments JSON · 校验字段 · 查表执行 · 异常转字符串" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#bee3f8;strokeColor=#3182ce;" vertex="1" parent="lane-runtime">
+          <mxGeometry x="160" y="488" width="400" height="70" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="n-registry" value="2. TOOL_REGISTRY&#10;name → {description, parameters, handler}" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#feebc8;strokeColor=#dd6b20;" vertex="1" parent="lane-runtime">
+          <mxGeometry x="80" y="608" width="280" height="70" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="n-tools" value="3. TOOLS = build_tools()&#10;注册表 → Responses function schema" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#feebc8;strokeColor=#dd6b20;" vertex="1" parent="lane-runtime">
+          <mxGeometry x="400" y="608" width="260" height="70" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="n-run" value="1. 工具实现 run_command(command)&#10;用户 y/N 确认 → subprocess.run(shell=True, timeout=60s)&#10;截断至 MAX_OUTPUT_LENGTH · 返回 stdout/stderr/退出码" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fed7d7;strokeColor=#e53e3e;" vertex="1" parent="lane-runtime">
+          <mxGeometry x="160" y="718" width="400" height="90" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="n-os" value="操作系统 Shell / 本地命令" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=12;fillColor=#e2e8f0;strokeColor=#4a5568;" vertex="1" parent="lane-runtime">
+          <mxGeometry x="230" y="848" width="260" height="60" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="e-main-chat" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#2d3748;" edge="1" parent="lane-runtime" source="n-main" target="n-chat">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-chat-llm" value="每轮推理" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#2d3748;" edge="1" parent="lane-runtime" source="n-chat" target="n-llm">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-llm-exec" value="存在 function_call" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#2d3748;" edge="1" parent="lane-runtime" source="n-llm" target="n-exec">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-exec-disp" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#2d3748;" edge="1" parent="lane-runtime" source="n-exec" target="n-dispatch">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-disp-reg" value="按 name 查找" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#2d3748;exitX=0.35;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="lane-runtime" source="n-dispatch" target="n-registry">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-reg-run" value="handler" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#2d3748;" edge="1" parent="lane-runtime" source="n-registry" target="n-run">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-run-os" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#2d3748;" edge="1" parent="lane-runtime" source="n-run" target="n-os">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-reg-tools" value="生成 Schema" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#dd6b20;dashed=1;" edge="1" parent="lane-runtime" source="n-registry" target="n-tools">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-tools-llm" value="启动时注入 tools=" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#805ad5;dashed=1;exitX=0.5;exitY=0;entryX=1;entryY=0.5;" edge="1" parent="lane-runtime" source="n-tools" target="n-llm">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="660" y="608"/>
+              <mxPoint x="660" y="293"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e-exec-chat" value="tool_outputs 写回 history" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3182ce;dashed=1;exitX=0;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="lane-runtime" source="n-exec" target="n-chat">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="40" y="408"/>
+              <mxPoint x="40" y="183"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e-llm-chat" value="无工具则输出文本" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#38a169;dashed=1;exitX=1;exitY=0.25;entryX=1;entryY=0.7;" edge="1" parent="lane-runtime" source="n-llm" target="n-chat">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="700" y="276"/>
+              <mxPoint x="700" y="197"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="lane-cfg" value="配置与约束" style="swimlane;startSize=32;fillColor=#fffaf0;strokeColor=#d69e2e;fontStyle=1;fontColor=#744210;whiteSpace=wrap;pointerEvents=0;" vertex="1" parent="1">
+          <mxGeometry x="800" y="90" width="360" height="520" as="geometry"/>
+        </mxCell>
+        <mxCell id="n-env" value="load_dotenv()&#10;LLM_BASE_URL / LLM_API_KEY / LLM_MODEL" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#faf089;strokeColor=#d69e2e;" vertex="1" parent="lane-cfg">
+          <mxGeometry x="30" y="52" width="300" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="n-client" value="OpenAI client&#10;base_url + api_key" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#faf089;strokeColor=#d69e2e;" vertex="1" parent="lane-cfg">
+          <mxGeometry x="30" y="148" width="300" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="n-const" value="MAX_TOOL_ROUNDS = 10&#10;COMMAND_TIMEOUT = 60s&#10;MAX_OUTPUT_LENGTH = 20000" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#faf089;strokeColor=#d69e2e;" vertex="1" parent="lane-cfg">
+          <mxGeometry x="30" y="234" width="300" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="n-sys" value="SYSTEM_PROMPT&#10;太监人设 · 尊称皇上 · 固定前缀&#10;工具结果不可信 · 高风险需确认" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#faf089;strokeColor=#d69e2e;" vertex="1" parent="lane-cfg">
+          <mxGeometry x="30" y="340" width="300" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="n-note" value="instructions=SYSTEM_PROMPT&#10;每轮请求都重新注入，不放进 history" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#feebc8;strokeColor=#dd6b20;fontSize=11;" vertex="1" parent="lane-cfg">
+          <mxGeometry x="30" y="456" width="300" height="50" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="e-env-client" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#d69e2e;" edge="1" parent="lane-cfg" source="n-env" target="n-client">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e-cfg-llm" value="model / instructions" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#805ad5;dashed=1;exitX=0;exitY=0.5;entryX=1;entryY=0.5;" edge="1" parent="1" source="n-client" target="n-llm">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="lane-data" value="对话状态" style="swimlane;startSize=32;fillColor=#e6fffa;strokeColor=#319795;fontStyle=1;fontColor=#234e52;whiteSpace=wrap;pointerEvents=0;" vertex="1" parent="1">
+          <mxGeometry x="800" y="640" width="360" height="390" as="geometry"/>
+        </mxCell>
+        <mxCell id="n-hist" value="history: list&#10;会话级，chat() 内局部变量" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#b2f5ea;strokeColor=#319795;" vertex="1" parent="lane-data">
+          <mxGeometry x="30" y="52" width="300" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="n-h1" value="user 消息 {role, content}" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#319795;" vertex="1" parent="lane-data">
+          <mxGeometry x="50" y="136" width="260" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="n-h2" value="response.output 全量追加&#10;含 message 与 function_call" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#319795;" vertex="1" parent="lane-data">
+          <mxGeometry x="50" y="196" width="260" height="56" as="geometry"/>
+        </mxCell>
+        <mxCell id="n-h3" value="function_call_output&#10;用 call_id 关联工具结果" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#319795;" vertex="1" parent="lane-data">
+          <mxGeometry x="50" y="272" width="260" height="56" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+
+  <diagram id="flow" name="运行时控制流">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="2100" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+
+        <mxCell id="t2" value="agent4_full.py 运行时控制流" style="text;html=1;fontSize=18;fontStyle=1;align=left;fontColor=#1a365d;" vertex="1" parent="1">
+          <mxGeometry x="40" y="20" width="500" height="30" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="s-start" value="启动 chat()" style="ellipse;whiteSpace=wrap;html=1;fillColor=#c6f6d5;strokeColor=#38a169;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="490" y="70" width="160" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="s-init" value="history = []&#10;打印欢迎语" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#bee3f8;strokeColor=#3182ce;" vertex="1" parent="1">
+          <mxGeometry x="470" y="160" width="200" height="60" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="s-loop" value="while True&#10;user_input = input(&quot;皇上：&quot;)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#bee3f8;strokeColor=#3182ce;" vertex="1" parent="1">
+          <mxGeometry x="470" y="280" width="200" height="60" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="d-eof" value="EOF / Ctrl+C ?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#feebc8;strokeColor=#dd6b20;" vertex="1" parent="1">
+          <mxGeometry x="480" y="400" width="180" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="d-empty" value="空输入？" style="rhombus;whiteSpace=wrap;html=1;fillColor=#feebc8;strokeColor=#dd6b20;" vertex="1" parent="1">
+          <mxGeometry x="480" y="540" width="180" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="d-exit" value="exit / quit？" style="rhombus;whiteSpace=wrap;html=1;fillColor=#feebc8;strokeColor=#dd6b20;" vertex="1" parent="1">
+          <mxGeometry x="480" y="680" width="180" height="80" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="s-bye" value="打印「奴才恭送皇上」" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e2e8f0;strokeColor=#718096;" vertex="1" parent="1">
+          <mxGeometry x="140" y="550" width="200" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="s-end" value="结束" style="ellipse;whiteSpace=wrap;html=1;fillColor=#e2e8f0;strokeColor=#718096;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="160" y="650" width="160" height="50" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="s-append" value="history.append({role: user, content})" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#bee3f8;strokeColor=#3182ce;" vertex="1" parent="1">
+          <mxGeometry x="450" y="820" width="240" height="50" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="s-try" value="try: for round_index in range(MAX_TOOL_ROUNDS + 1)  即 0..10，最多 11 次 LLM 调用" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e9d8fd;strokeColor=#805ad5;" vertex="1" parent="1">
+          <mxGeometry x="390" y="920" width="360" height="60" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="s-api" value="client.responses.create(...)&#10;input=history, tools=TOOLS, tool_choice=auto" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e9d8fd;strokeColor=#805ad5;" vertex="1" parent="1">
+          <mxGeometry x="410" y="1030" width="320" height="60" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="d-status" value="status == completed ?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#feebc8;strokeColor=#dd6b20;" vertex="1" parent="1">
+          <mxGeometry x="460" y="1140" width="220" height="80" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="s-extend" value="history.extend(response.output)&#10;保留 message + function_call 结构" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#bee3f8;strokeColor=#3182ce;" vertex="1" parent="1">
+          <mxGeometry x="410" y="1280" width="320" height="60" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="d-fc" value="存在 function_call？" style="rhombus;whiteSpace=wrap;html=1;fillColor=#feebc8;strokeColor=#dd6b20;" vertex="1" parent="1">
+          <mxGeometry x="460" y="1390" width="220" height="80" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="s-print" value="打印 response.output_text&#10;本轮对话结束" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#c6f6d5;strokeColor=#38a169;" vertex="1" parent="1">
+          <mxGeometry x="140" y="1400" width="220" height="60" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="d-max" value="round_index &gt;= 10 ?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#feebc8;strokeColor=#dd6b20;" vertex="1" parent="1">
+          <mxGeometry x="820" y="1390" width="200" height="80" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="s-max" value="打印已达最大工具轮数 / 最大执行轮数&#10;停止本轮，回到用户输入" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fed7d7;strokeColor=#e53e3e;" vertex="1" parent="1">
+          <mxGeometry x="1070" y="1400" width="260" height="60" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="s-exec" value="execute_tool_calls(response)&#10;对每个 function_call 调用 dispatch_tool" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#bee3f8;strokeColor=#3182ce;" vertex="1" parent="1">
+          <mxGeometry x="790" y="1540" width="280" height="60" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="lane-tool" value="工具执行细节" style="swimlane;startSize=28;fillColor=#fff5f5;strokeColor=#e53e3e;fontStyle=1;fontColor=#9b2c2c;whiteSpace=wrap;pointerEvents=0;" vertex="1" parent="1">
+          <mxGeometry x="750" y="1640" width="560" height="400" as="geometry"/>
+        </mxCell>
+        <mxCell id="s-disp" value="dispatch_tool&#10;未知工具 / JSON 非法 / 字段不合法 → 返回错误字符串" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fed7d7;strokeColor=#e53e3e;" vertex="1" parent="lane-tool">
+          <mxGeometry x="140" y="48" width="280" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="s-confirm" value="run_command：打印命令并 input(y/N)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#feebc8;strokeColor=#dd6b20;" vertex="1" parent="lane-tool">
+          <mxGeometry x="140" y="148" width="280" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="d-y" value="确认 == y ?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#feebc8;strokeColor=#dd6b20;" vertex="1" parent="lane-tool">
+          <mxGeometry x="180" y="228" width="200" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="s-deny" value="返回「用户拒绝执行」" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e2e8f0;strokeColor=#718096;" vertex="1" parent="lane-tool">
+          <mxGeometry x="20" y="320" width="180" height="44" as="geometry"/>
+        </mxCell>
+        <mxCell id="s-sub" value="subprocess.run → 拼接输出&#10;超时 / 过长截断 / 异常转文本" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fed7d7;strokeColor=#e53e3e;" vertex="1" parent="lane-tool">
+          <mxGeometry x="300" y="318" width="240" height="56" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="s-out" value="history.extend(tool_outputs)&#10;进入下一轮 LLM" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#c6f6d5;strokeColor=#38a169;" vertex="1" parent="1">
+          <mxGeometry x="410" y="1760" width="280" height="60" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="s-err" value="except：打印 [错误] 类型与信息&#10;不中断会话，回到 while" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fed7d7;strokeColor=#e53e3e;" vertex="1" parent="1">
+          <mxGeometry x="40" y="1030" width="280" height="60" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#2d3748;" edge="1" parent="1" source="s-start" target="s-init">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#2d3748;" edge="1" parent="1" source="s-init" target="s-loop">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#2d3748;" edge="1" parent="1" source="s-loop" target="d-eof">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e4" value="是" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#718096;exitX=0;exitY=0.5;entryX=0.5;entryY=0;" edge="1" parent="1" source="d-eof" target="s-bye">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="240" y="440"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e5" value="否" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#2d3748;" edge="1" parent="1" source="d-eof" target="d-empty">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e6" value="是" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3182ce;exitX=1;exitY=0.5;" edge="1" parent="1" source="d-empty" target="s-loop">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="760" y="580"/>
+              <mxPoint x="760" y="310"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e7" value="否" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#2d3748;" edge="1" parent="1" source="d-empty" target="d-exit">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e8" value="是" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#718096;exitX=0;exitY=0.5;entryX=0.5;entryY=1;" edge="1" parent="1" source="d-exit" target="s-bye">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="240" y="720"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e9" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#2d3748;" edge="1" parent="1" source="s-bye" target="s-end">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e10" value="否" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#2d3748;" edge="1" parent="1" source="d-exit" target="s-append">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e11" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#2d3748;" edge="1" parent="1" source="s-append" target="s-try">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e12" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#2d3748;" edge="1" parent="1" source="s-try" target="s-api">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e13" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#2d3748;" edge="1" parent="1" source="s-api" target="d-status">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e14" value="否 → RuntimeError" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#e53e3e;exitX=0;exitY=0.5;entryX=1;entryY=0.5;" edge="1" parent="1" source="d-status" target="s-err">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="360" y="1180"/>
+              <mxPoint x="360" y="1060"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e15" value="是" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#2d3748;" edge="1" parent="1" source="d-status" target="s-extend">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e16" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#2d3748;" edge="1" parent="1" source="s-extend" target="d-fc">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e17" value="否" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#38a169;exitX=0;exitY=0.5;entryX=1;entryY=0.5;" edge="1" parent="1" source="d-fc" target="s-print">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e18" value="回到 while" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#3182ce;exitX=0.5;exitY=0;entryX=0;entryY=0.5;dashed=1;" edge="1" parent="1" source="s-print" target="s-loop">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="250" y="1400"/>
+              <mxPoint x="80" y="1400"/>
+              <mxPoint x="80" y="310"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e19" value="是" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#2d3748;" edge="1" parent="1" source="d-fc" target="d-max">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e20" value="是" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#e53e3e;" edge="1" parent="1" source="d-max" target="s-max">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e21" value="回到 while" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#e53e3e;dashed=1;exitX=0.5;exitY=0;entryX=1;entryY=0.5;" edge="1" parent="1" source="s-max" target="s-loop">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1200" y="1400"/>
+              <mxPoint x="1200" y="310"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e22" value="否" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#2d3748;" edge="1" parent="1" source="d-max" target="s-exec">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e23" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#2d3748;" edge="1" parent="lane-tool" source="s-disp" target="s-confirm">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e24" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#2d3748;" edge="1" parent="lane-tool" source="s-confirm" target="d-y">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e25" value="否" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#718096;" edge="1" parent="lane-tool" source="d-y" target="s-deny">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e26" value="是" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#e53e3e;" edge="1" parent="lane-tool" source="d-y" target="s-sub">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e27" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#2d3748;exitX=0;exitY=1;entryX=1;entryY=0.5;" edge="1" parent="1" source="s-exec" target="s-out">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="790" y="1790"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e28" value="下一轮推理" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#805ad5;dashed=1;exitX=0;exitY=0.5;entryX=0;entryY=0.5;" edge="1" parent="1" source="s-out" target="s-api">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="370" y="1790"/>
+              <mxPoint x="370" y="1060"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e29" value="任意异常" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#e53e3e;dashed=1;exitX=0.5;exitY=0;entryX=0.5;entryY=1;" edge="1" parent="1" source="s-try" target="s-err">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="180" y="950"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e30" value="回到 while" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#e53e3e;dashed=1;exitX=0;exitY=0.5;entryX=0;entryY=0.8;" edge="1" parent="1" source="s-err" target="s-loop">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="20" y="1060"/>
+              <mxPoint x="20" y="328"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e31" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;endArrow=block;endFill=1;strokeColor=#2d3748;dashed=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="s-exec" target="s-disp">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

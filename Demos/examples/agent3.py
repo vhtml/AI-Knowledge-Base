@@ -10,6 +10,7 @@ client = OpenAI(
   api_key=os.getenv("LLM_API_KEY"),
 )
 
+# 用history缓存聊天记录
 history = []
 
 while True:
