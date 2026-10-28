@@ -37,7 +37,7 @@ Python 用 `uv` 管理依赖（Python 3.13），前端用 `npm`。
 
 - `chat_cli` 用 `selftest.py` 自检（不依赖 pytest）：`python -m chat_cli.selftest`。改动 `messages.py` / `context.py` / `storage.py` 后必须跑通
 - 其它示例暂无测试；新增可测逻辑时在同目录放 `test_*.py` 或 `selftest.py`，保证能 `python -m` 直接运行
-- RAG 检索质量由 `backend/rag.py` 内置的 `GOLD` 黄金集评估，结果写入 `data/eval_log.json`
+- RAG 检索质量由 `backend/rag.py` 内置的 `GOLD` 黄金集评估：`cd Demos/examples/rag-demo && python -m backend.rag eval`（需联网调 embedding），结果写入 `data/eval_log.json`
 - 提交前至少跑一遍 `python -m chat_cli.selftest`，改动前端时再加一次 `npm run build`
 
 ## 提交规范
@@ -53,8 +53,4 @@ Python 用 `uv` 管理依赖（Python 3.13），前端用 `npm`。
 - 密钥只写进 `Demos/.env`（已在 `.gitignore` 中），提交的是 `.env.example`
 - 后端统一读 `LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL`（OpenAI 兼容接口），用 `python-dotenv` 的 `load_dotenv()` 加载
 - 前端用 `VITE_API_BASE` 指向后端，默认 `http://localhost:8000`
-- 不要提交 `.env`、`.venv/`、`node_modules/`、`dist/`、`.DS_Store`
-
-## 已知问题
-
-- `backend/rag.py` 的 `ROOT` 指向 `backend/`，但数据在 `rag-demo/data/`——应改为 `ROOT.parent`，否则 `python -m backend.rag eval` 会抛 `FileNotFoundError`
+- 不要提交 `.env`、`.venv/`、`node_modules/`、`dist/`、`.DS_Store`、运行日志（`logs/` 与 `*.log` 已在 `.gitignore` 中）
