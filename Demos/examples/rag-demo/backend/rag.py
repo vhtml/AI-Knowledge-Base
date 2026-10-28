@@ -9,7 +9,8 @@ import numpy as np
 from dotenv import load_dotenv
 from openai import OpenAI
 
-ROOT = Path(__file__).resolve().parent
+# 数据目录 rag-demo/data/ 与 backend/ 平级，所以 ROOT 要指到 backend 的上一级
+ROOT = Path(__file__).resolve().parent.parent
 load_dotenv()
 
 client = OpenAI(
