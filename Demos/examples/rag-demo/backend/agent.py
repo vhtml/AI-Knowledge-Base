@@ -5,12 +5,12 @@ from datetime import datetime
 from openai import OpenAI
 from dotenv import load_dotenv
 
+load_dotenv()
+
 client = OpenAI(
     base_url=os.getenv("LLM_BASE_URL") or None,
     api_key=os.getenv("LLM_API_KEY"),
 )
-
-client = OpenAI()
 
 def calculator(a, b, operation):
  if operation == "add": return str(a+b)
