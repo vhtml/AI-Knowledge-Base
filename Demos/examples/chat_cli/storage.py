@@ -128,6 +128,10 @@ class SessionStore:
             },
         )
 
+    def append_clear(self, session_id: str) -> None:
+        """记录清空边界，恢复时保留历史但不再载入旧上下文。"""
+        self._append_event(session_id, {"type": "clear", "at": now_iso()})
+
     def append_session_start(
         self, session_id: str, model: str, system_prompt: str
     ) -> None:
@@ -207,6 +211,10 @@ class SessionStore:
                     recent.append(Message.from_dict(payload))
                 except (KeyError, ValueError):
                     continue
+
+            elif kind == "clear":
+                recent = []
+                summary = None
 
             elif kind == "compaction":
                 payload = event.get("summary") or {}

@@ -86,7 +86,8 @@ class Conversation:
         self.last_plan: ContextPlan | None = None
         self.last_reply = ""
         self.last_compaction: tuple[int, Message | None] | None = None
-        self._title_set = False
+        meta = self.store.load_meta(session_id)
+        self._title_set = bool(meta and meta.title)
 
     # ------------------------------------------------------------
     # 1. 一轮对话
@@ -138,7 +139,8 @@ class Conversation:
         else:
             text = self.client.complete(plan.api_messages)
             chunks.append(text)
-            yield Delta(text=text, finish_reason="stop")
+            finish_reason = "stop"
+            yield Delta(text=text, finish_reason=finish_reason)
 
         reply = "".join(chunks)
 
@@ -367,6 +369,7 @@ class ChatSession:
             self.show_sessions()
 
         elif name == "/clear":
+            self.store.append_clear(self.session_id)
             self.conversation.window.reset()
             print(self.style.dim("当前上下文已清空（磁盘历史保留）。"))
 
