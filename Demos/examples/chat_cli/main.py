@@ -1,11 +1,19 @@
 """命令行入口：解析参数 → 装配会话 → 进入交互循环。
 
-用法示例：
-    python -m chat_cli                      # 新建会话
-    python -m chat_cli --resume 20261026-101500-a1b2
-    python -m chat_cli --list
-    python -m chat_cli --show 20261026-101500-a1b2
-    python -m chat_cli --mock               # 离线演示，不联网
+必须在 Demos/examples 目录下运行（包在 examples 下）：
+
+    cd Demos/examples
+
+    uv run --project .. python -m chat_cli              # 推荐：自动带上 Demos 的依赖
+    uv run --project .. python -m chat_cli --mock       # 离线演示，不联网
+    python3 -m chat_cli --mock                          # 裸解释器也能跑离线模式
+    python3 -m chat_cli --resume 20261026-101500-a1b2
+    python3 -m chat_cli --list
+    python3 -m chat_cli --show 20261026-101500-a1b2
+
+从别的目录运行时用 PYTHONPATH 指向本目录：
+
+    PYTHONPATH=Demos/examples python3 -m chat_cli --mock
 """
 
 from __future__ import annotations
@@ -14,7 +22,10 @@ import argparse
 import sys
 from pathlib import Path
 
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv
+except ImportError:  # 没装 python-dotenv 也能跑 --mock
+    load_dotenv = None  # type: ignore[assignment]
 
 from .chat import ChatSession, Conversation
 from .context import (
@@ -165,20 +176,45 @@ def build_client(args: argparse.Namespace) -> tuple[object, str]:
     if args.mock:
         return MockLLMClient(), "mock-model"
 
+    # 先查依赖：没有 openai 包，后面所有检查都没意义
+    try:
+        import openai  # noqa: F401
+    except ImportError as exc:
+        print(
+            f"[错误] 缺少依赖：{exc.name}。\n"
+            "        请先执行 `cd Demos && uv sync` 安装依赖，\n"
+            "        或直接用 `uv run --project .. python -m chat_cli` 运行；\n"
+            "        只想看效果可以用 `--mock` 离线模式（不需要任何依赖）。",
+            file=sys.stderr,
+        )
+        raise SystemExit(1) from exc
+
     if not api_key:
         print(
             "[错误] 没有找到 API Key。请设置环境变量 LLM_API_KEY，"
-            "或使用 --api-key 指定；也可以用 --mock 离线演示。",
+            "或使用 --api-key 指定；也可以用 --mock 离线演示。\n"
+            "        提示：仓库里的密钥在 Demos/.env，"
+            "用 `uv run --project .. python -m chat_cli` 会自动加载。",
             file=sys.stderr,
         )
         raise SystemExit(1)
 
-    client = LLMClient(
-        model=model,
-        base_url=base_url,
-        api_key=api_key,
-        temperature=args.temperature,
-    )
+    try:
+        client = LLMClient(
+            model=model,
+            base_url=base_url,
+            api_key=api_key,
+            temperature=args.temperature,
+        )
+    except ImportError as exc:
+        print(
+            f"[错误] 缺少依赖：{exc.name}。\n"
+            "        请先执行 `cd Demos && uv sync` 安装依赖，\n"
+            "        或直接用 `uv run --project .. python -m chat_cli` 运行；\n"
+            "        只想看效果可以用 `--mock` 离线模式（不需要任何依赖）。",
+            file=sys.stderr,
+        )
+        raise SystemExit(1) from exc
 
     return client, model
 
@@ -187,7 +223,17 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
     # .env 放在 Demos/ 下，load_dotenv 会向上查找
-    load_dotenv()
+    if load_dotenv is not None:
+        load_dotenv()
+    elif not args.mock:
+        print(
+            "[提示] 未安装 python-dotenv，改为直接读取环境变量。",
+            file=sys.stderr,
+        )
+
+    if args.max_context_tokens < 8 or args.keep_recent_turns < 1:
+        print("[错误] 上下文预算至少为 8，保留轮数至少为 1。", file=sys.stderr)
+        return 1
 
     store = SessionStore(args.session_dir)
 
@@ -214,6 +260,15 @@ def main(argv: list[str] | None = None) -> int:
             return 1
     else:
         session_id = args.session or new_session_id()
+
+    if resuming and not args.system and not args.system_file:
+        meta = store.load_meta(session_id)
+        if meta is not None:
+            system_prompt = meta.system_prompt
+
+    if not resuming and store.exists(session_id):
+        print(f"[错误] 会话已存在：{session_id}；请使用 --resume。", file=sys.stderr)
+        return 1
 
     # ------------------------------------------------------------
     # 2. 恢复或创建工作记忆
