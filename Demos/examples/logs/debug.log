@@ -1,6 +1,0 @@
-2026-10-18 17:13:14.208 | DEBUG    | __main__:<module>:11 - This is a debug message
-2026-10-18 17:13:33.019 | DEBUG    | __main__:<module>:11 - This is a debug message
-2026-10-18 17:13:33.019 | INFO     | __main__:<module>:12 - This is an info message
-2026-10-18 17:13:33.020 | WARNING  | __main__:<module>:13 - This is a warning message
-2026-10-18 17:13:33.020 | ERROR    | __main__:<module>:14 - This is an error message
-2026-10-18 17:13:33.020 | CRITICAL | __main__:<module>:15 - This is a critical message
