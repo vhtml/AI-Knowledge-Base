@@ -1,0 +1,159 @@
+<mxfile host="app.diagrams.net" agent="chat_cli-arch">
+  <diagram id="chat-cli-arch" name="chat_cli 架构">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1520" pageHeight="930" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+    <mxCell id="L1" value="入口层 · main.py（参数 · 会话 · 客户端）" style="swimlane;startSize=32;horizontal=1;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;fontSize=13;fontColor=#333333;rounded=1;arcSize=6;" vertex="1" parent="1">
+      <mxGeometry x="100" y="20" width="1000" height="110" as="geometry" />
+    </mxCell>
+    <mxCell id="c1" value="argparse 参数解析" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;fontSize=12;fontColor=#333333;" vertex="1" parent="L1">
+      <mxGeometry x="30" y="42" width="280" height="52" as="geometry" />
+    </mxCell>
+    <mxCell id="c2" value="会话定位&lt;br>新建 / 恢复 / 列出 / 查看" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;fontSize=12;fontColor=#333333;" vertex="1" parent="L1">
+      <mxGeometry x="350" y="42" width="320" height="52" as="geometry" />
+    </mxCell>
+    <mxCell id="c3" value="客户端装配&lt;br>LLMClient / MockLLMClient" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;fontSize=12;fontColor=#333333;" vertex="1" parent="L1">
+      <mxGeometry x="710" y="42" width="260" height="52" as="geometry" />
+    </mxCell>
+    <mxCell id="L2" value="交互层 · chat.py（编排 + 终端）" style="swimlane;startSize=32;horizontal=1;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;fontSize=13;fontColor=#333333;rounded=1;arcSize=6;" vertex="1" parent="1">
+      <mxGeometry x="100" y="160" width="1000" height="130" as="geometry" />
+    </mxCell>
+    <mxCell id="c5" value="ChatSession&lt;br>REPL 循环 · 斜杠命令&lt;br>流式逐段打印" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;fontSize=12;fontColor=#333333;" vertex="1" parent="L2">
+      <mxGeometry x="30" y="44" width="320" height="70" as="geometry" />
+    </mxCell>
+    <mxCell id="c6" value="Conversation&lt;br>装配 → 请求 → 落盘 → 压缩&lt;br>（一轮对话的编排）" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;fontSize=12;fontColor=#333333;" vertex="1" parent="L2">
+      <mxGeometry x="390" y="44" width="340" height="70" as="geometry" />
+    </mxCell>
+    <mxCell id="c7" value="统计输出&lt;br>首字延迟&lt;br>token 用量" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;fontSize=12;fontColor=#333333;" vertex="1" parent="L2">
+      <mxGeometry x="760" y="44" width="210" height="70" as="geometry" />
+    </mxCell>
+    <mxCell id="L3" value="领域层（纯逻辑，不联网）" style="swimlane;startSize=32;horizontal=1;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=1;fontSize=13;fontColor=#333333;rounded=1;arcSize=6;" vertex="1" parent="1">
+      <mxGeometry x="100" y="320" width="1000" height="150" as="geometry" />
+    </mxCell>
+    <mxCell id="c8" value="ContextWindow&lt;br>build() 装配 · compact() 压缩&lt;br>split_recent() 按轮切分&lt;br>→ ContextPlan（装配结果）" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d6b656;fontSize=12;fontColor=#333333;" vertex="1" parent="L3">
+      <mxGeometry x="30" y="42" width="320" height="90" as="geometry" />
+    </mxCell>
+    <mxCell id="c9" value="Message&lt;br>role / content / meta&lt;br>token 估算 · 序列化往返&lt;br>to_api() 只给 role+content" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d6b656;fontSize=12;fontColor=#333333;" vertex="1" parent="L3">
+      <mxGeometry x="390" y="42" width="270" height="90" as="geometry" />
+    </mxCell>
+    <mxCell id="L4" value="能力层 · llm.py（模型访问）" style="swimlane;startSize=32;horizontal=1;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1;fontSize=13;fontColor=#333333;rounded=1;arcSize=6;" vertex="1" parent="1">
+      <mxGeometry x="100" y="500" width="1000" height="150" as="geometry" />
+    </mxCell>
+    <mxCell id="c13" value="make_summarizer()&lt;br>压缩器 · 失败降级本地摘要&lt;br>长度本地强制限 200t" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#9673a6;fontSize=12;fontColor=#333333;" vertex="1" parent="L4">
+      <mxGeometry x="30" y="42" width="280" height="90" as="geometry" />
+    </mxCell>
+    <mxCell id="c12" value="LLMClient.complete()&lt;br>非流式：生成上下文摘要" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#9673a6;fontSize=12;fontColor=#333333;" vertex="1" parent="L4">
+      <mxGeometry x="340" y="42" width="320" height="90" as="geometry" />
+    </mxCell>
+    <mxCell id="c11" value="LLMClient.stream()&lt;br>流式吐字 · 逐段回传" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#9673a6;fontSize=12;fontColor=#333333;" vertex="1" parent="L4">
+      <mxGeometry x="690" y="42" width="280" height="90" as="geometry" />
+    </mxCell>
+    <mxCell id="L5" value="存储层 · storage.py（历史存档）" style="swimlane;startSize=32;horizontal=1;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontStyle=1;fontSize=13;fontColor=#333333;rounded=1;arcSize=6;" vertex="1" parent="1">
+      <mxGeometry x="100" y="680" width="1000" height="180" as="geometry" />
+    </mxCell>
+    <mxCell id="c14" value="SessionStore&lt;br>append_message&lt;br>append_compaction&lt;br>load_context_state&lt;br>list_sessions" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#b85450;fontSize=12;fontColor=#333333;" vertex="1" parent="L5">
+      <mxGeometry x="30" y="42" width="250" height="115" as="geometry" />
+    </mxCell>
+    <mxCell id="c15" value="JSONL 事件流（append-only）&lt;br>session_start&lt;br>message&lt;br>compaction" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#b85450;fontSize=12;fontColor=#333333;" vertex="1" parent="L5">
+      <mxGeometry x="290" y="42" width="300" height="115" as="geometry" />
+    </mxCell>
+    <mxCell id="c16" value="meta.json&lt;br>模型 · 标题 · 消息数&lt;br>token 总量 · 压缩次数" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#b85450;fontSize=12;fontColor=#333333;" vertex="1" parent="L5">
+      <mxGeometry x="640" y="42" width="330" height="115" as="geometry" />
+    </mxCell>
+    <mxCell id="R1" value="OpenAI 兼容接口&lt;br>&lt;br>chat.completions.create&lt;br>LLM_BASE_URL / LLM_API_KEY&lt;br>LLM_MODEL" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;align=left;spacingLeft=12;verticalAlign=top;fillColor=#f5f5f5;strokeColor=#666666;fontSize=12;fontColor=#333333;" vertex="1" parent="1">
+      <mxGeometry x="1150" y="500" width="350" height="150" as="geometry" />
+    </mxCell>
+    <mxCell id="R2" value="关键约定&lt;br>&lt;br>① 只有 role + content 进入模型上下文&lt;br>元数据留在本地，只服务展示与统计&lt;br>&lt;br>② 上下文 = 系统提示 + 历史摘要 + 近期原文&lt;br>按 token 预算动态装配，超出即裁剪&lt;br>&lt;br>③ 历史 = 完整事件流&lt;br>压缩只折叠，不删除任何消息" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;align=left;spacingLeft=12;verticalAlign=top;fillColor=#ffffff;strokeColor=#999999;fontSize=12;fontColor=#333333;" vertex="1" parent="1">
+      <mxGeometry x="1150" y="20" width="350" height="300" as="geometry" />
+    </mxCell>
+    <mxCell id="R3" value="会话目录&lt;br>&lt;br>~/.chat-cli/sessions/&lt;br>  &lt;id>.jsonl       事件流&lt;br>  &lt;id>.meta.json   元信息&lt;br>&lt;br>--session-dir 可改" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;align=left;spacingLeft=12;verticalAlign=top;fillColor=#ffffff;strokeColor=#999999;fontSize=12;fontColor=#333333;" vertex="1" parent="1">
+      <mxGeometry x="1150" y="680" width="350" height="180" as="geometry" />
+    </mxCell>
+    <mxCell id="F1" value="数据流：用户输入 → ChatSession → Conversation →（装配上下文）→ LLMClient 流式请求 → 增量逐段回显 → 落盘 JSONL → 超预算则压缩成摘要" style="text;html=1;align=left;verticalAlign=middle;fontSize=12;fontColor=#555555;" vertex="1" parent="1">
+      <mxGeometry x="100" y="875" width="1000" height="38" as="geometry" />
+    </mxCell>
+    <mxCell id="e1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;jettySize=auto;html=1;exitX=1.0000;exitY=0.5000;exitDx=0;exitDy=0;entryX=0.0000;entryY=0.5000;entryDx=0;entryDy=0;strokeColor=#666666;strokeWidth=1.5;fontSize=11;fontColor=#555555;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="c1" target="c2">
+      <mxGeometry relative="1" as="geometry">
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="e2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;jettySize=auto;html=1;exitX=1.0000;exitY=0.5000;exitDx=0;exitDy=0;entryX=0.0000;entryY=0.5000;entryDx=0;entryDy=0;strokeColor=#666666;strokeWidth=1.5;fontSize=11;fontColor=#555555;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="c2" target="c3">
+      <mxGeometry relative="1" as="geometry">
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="e3" value="启动交互" style="edgeStyle=orthogonalEdgeStyle;rounded=1;jettySize=auto;html=1;exitX=0.5000;exitY=1.0000;exitDx=0;exitDy=0;entryX=0.4375;entryY=0.0000;entryDx=0;entryDy=0;strokeColor=#666666;strokeWidth=1.5;fontSize=11;fontColor=#555555;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="c1" target="c5">
+      <mxGeometry relative="1" as="geometry">
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="e4" value="ask(用户输入)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;jettySize=auto;html=1;exitX=1.0000;exitY=0.2000;exitDx=0;exitDy=0;entryX=0.0000;entryY=0.2000;entryDx=0;entryDy=0;strokeColor=#666666;strokeWidth=1.5;fontSize=11;fontColor=#555555;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="c5" target="c6">
+      <mxGeometry relative="1" as="geometry">
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="e5" value="流式增量逐段返回" style="edgeStyle=orthogonalEdgeStyle;rounded=1;jettySize=auto;html=1;exitX=0.0000;exitY=0.7714;exitDx=0;exitDy=0;entryX=1.0000;entryY=0.7714;entryDx=0;entryDy=0;strokeColor=#666666;strokeWidth=1.5;fontSize=11;fontColor=#555555;labelBackgroundColor=#ffffff;dashed=1;" edge="1" parent="1" source="c6" target="c5">
+      <mxGeometry relative="1" as="geometry">
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="e6" value="统计" style="edgeStyle=orthogonalEdgeStyle;rounded=1;jettySize=auto;html=1;exitX=1.0000;exitY=0.5000;exitDx=0;exitDy=0;entryX=0.0000;entryY=0.5000;entryDx=0;entryDy=0;strokeColor=#666666;strokeWidth=1.5;fontSize=11;fontColor=#555555;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="c6" target="c7">
+      <mxGeometry relative="1" as="geometry">
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="e7" value="build() 装配上下文" style="edgeStyle=orthogonalEdgeStyle;rounded=1;jettySize=auto;html=1;exitX=0.1176;exitY=1.0000;exitDx=0;exitDy=0;entryX=0.5000;entryY=0.0000;entryDx=0;entryDy=0;strokeColor=#666666;strokeWidth=1.5;fontSize=11;fontColor=#555555;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="c6" target="c8">
+      <mxGeometry relative="1" as="geometry">
+        <Array as="points">
+          <mxPoint x="530" y="298" />
+          <mxPoint x="290" y="298" />
+        </Array>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="e8" value="HTTP 流式请求" style="edgeStyle=orthogonalEdgeStyle;rounded=1;jettySize=auto;html=1;exitX=1.0588;exitY=1.0000;exitDx=0;exitDy=0;entryX=0.2143;entryY=0.0000;entryDx=0;entryDy=0;strokeColor=#666666;strokeWidth=1.5;fontSize=11;fontColor=#555555;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="c6" target="c11">
+      <mxGeometry relative="1" as="geometry">
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="e9" value="落盘 append_message" style="edgeStyle=orthogonalEdgeStyle;rounded=1;jettySize=auto;html=1;exitX=0.8382;exitY=1.0000;exitDx=0;exitDy=0;entryX=0.5000;entryY=0.0000;entryDx=0;entryDy=0;strokeColor=#666666;strokeWidth=1.5;fontSize=11;fontColor=#555555;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="c6" target="c14">
+      <mxGeometry relative="1" as="geometry">
+        <Array as="points">
+          <mxPoint x="775" y="660" />
+          <mxPoint x="255" y="660" />
+        </Array>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="e10" value="超预算 → compact()" style="edgeStyle=orthogonalEdgeStyle;rounded=1;jettySize=auto;html=1;exitX=0.4531;exitY=1.0000;exitDx=0;exitDy=0;entryX=0.5179;entryY=0.0000;entryDx=0;entryDy=0;strokeColor=#666666;strokeWidth=1.5;fontSize=11;fontColor=#555555;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="c8" target="c13">
+      <mxGeometry relative="1" as="geometry">
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="e11" value="摘要请求" style="edgeStyle=orthogonalEdgeStyle;rounded=1;jettySize=auto;html=1;exitX=1.0000;exitY=0.5000;exitDx=0;exitDy=0;entryX=0.0000;entryY=0.5000;entryDx=0;entryDy=0;strokeColor=#666666;strokeWidth=1.5;fontSize=11;fontColor=#555555;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="c13" target="c12">
+      <mxGeometry relative="1" as="geometry">
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="e12" value="读写" style="edgeStyle=orthogonalEdgeStyle;rounded=1;jettySize=auto;html=1;exitX=1.0000;exitY=0.5000;exitDx=0;exitDy=0;entryX=0.0000;entryY=0.5000;entryDx=0;entryDy=0;strokeColor=#666666;strokeWidth=1.5;fontSize=11;fontColor=#555555;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="c8" target="c9">
+      <mxGeometry relative="1" as="geometry">
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="e13" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;jettySize=auto;html=1;exitX=1.0000;exitY=0.4957;exitDx=0;exitDy=0;entryX=0.0000;entryY=0.4957;entryDx=0;entryDy=0;strokeColor=#666666;strokeWidth=1.5;fontSize=11;fontColor=#555555;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="c14" target="c15">
+      <mxGeometry relative="1" as="geometry">
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="e14" value="更新元信息" style="edgeStyle=orthogonalEdgeStyle;rounded=1;jettySize=auto;html=1;exitX=0.5600;exitY=1.0000;exitDx=0;exitDy=0;entryX=0.5758;entryY=1.0000;entryDx=0;entryDy=0;strokeColor=#666666;strokeWidth=1.5;fontSize=11;fontColor=#555555;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="c14" target="c16">
+      <mxGeometry relative="1" as="geometry">
+        <Array as="points">
+          <mxPoint x="270" y="850" />
+          <mxPoint x="930" y="850" />
+        </Array>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="e15" value="恢复：重建上下文窗口" style="edgeStyle=orthogonalEdgeStyle;rounded=1;jettySize=auto;html=1;exitX=0.0000;exitY=0.5043;exitDx=0;exitDy=0;entryX=0.0000;entryY=0.7556;entryDx=0;entryDy=0;strokeColor=#666666;strokeWidth=1.5;fontSize=11;fontColor=#555555;labelBackgroundColor=#ffffff;dashed=1;" edge="1" parent="1" source="c14" target="c8">
+      <mxGeometry relative="1" as="geometry">
+        <Array as="points">
+          <mxPoint x="86" y="780" />
+          <mxPoint x="86" y="430" />
+        </Array>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="e16" value="HTTP" style="edgeStyle=orthogonalEdgeStyle;rounded=1;jettySize=auto;html=1;exitX=1.0000;exitY=0.5000;exitDx=0;exitDy=0;entryX=0.0000;entryY=0.5000;entryDx=0;entryDy=0;strokeColor=#666666;strokeWidth=1.5;fontSize=11;fontColor=#555555;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="c11" target="R1">
+      <mxGeometry relative="1" as="geometry">
+      </mxGeometry>
+    </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
