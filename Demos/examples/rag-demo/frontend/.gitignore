@@ -1,0 +1,9 @@
+# 构建产物
+dist/
+
+# 本地环境覆盖
+.env.local
+.env.*.local
+
+# 保留示例配置（根 .gitignore 的 .env.* 会误伤）
+!/.env.example
