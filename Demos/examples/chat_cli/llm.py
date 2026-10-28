@@ -186,7 +186,7 @@ def make_summarizer(client, max_summary_tokens: int = 200) -> callable:
         except Exception as exc:  # 摘要失败不能影响主流程
             print(f"[摘要] 模型调用失败，降级为本地摘要：{type(exc).__name__}")
 
-        return naive_summary(old_messages, previous_summary)
+        return truncate_to_tokens(naive_summary(old_messages, previous_summary), max_summary_tokens)
 
     return summarize
 

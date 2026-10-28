@@ -11,7 +11,8 @@ import tempfile
 from pathlib import Path
 
 from .context import ContextWindow, naive_summary
-from .messages import ROLE_ASSISTANT, ROLE_USER, Message
+from .messages import ROLE_ASSISTANT, ROLE_USER, Message, estimate_tokens
+from .llm import make_summarizer
 from .storage import SessionStore
 
 PASSED = 0
@@ -152,6 +153,20 @@ def test_storage() -> None:
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
+def test_budget_edges() -> None:
+    print("\n[5] 上下文预算与摘要裁剪边界")
+    window = ContextWindow("系统" * 100, budget_tokens=100, keep_recent_turns=1)
+    window.add(Message(ROLE_USER, "问题" * 20))
+    check("系统提示为当前输入让出预算", window.build().used_tokens <= 100)
+    window.summary = Message("system", "摘要" * 100)
+    check("摘要裁剪后不超过预算", window.build().used_tokens <= 100)
+
+    class BrokenClient:
+        def complete(self, messages):
+            raise RuntimeError("offline")
+
+    result = make_summarizer(BrokenClient(), 20)([Message(ROLE_USER, "内容" * 200)], None)
+    check("降级摘要遵守长度上限", estimate_tokens(result) <= 20)
 def _new_meta(session_id: str):
     from .storage import SessionMeta
 
@@ -176,6 +191,7 @@ def main() -> int:
     test_context_budget()
     test_context_compact()
     test_storage()
+    test_budget_edges()
 
     print("\n" + "=" * 56)
     print(f"通过 {PASSED} 项，失败 {FAILED} 项")

@@ -192,8 +192,10 @@ class ContextWindow:
         # 3.1 系统提示
         system = Message(ROLE_SYSTEM, self.system_prompt)
 
-        if system.tokens > self.budget_tokens:
-            room = max(0, self.budget_tokens - MESSAGE_OVERHEAD_TOKENS)
+        newest = self.messages[-1] if self.messages else None
+        system_budget = max(MESSAGE_OVERHEAD_TOKENS, self.budget_tokens - (newest.tokens if newest else 0))
+        if system.tokens > system_budget:
+            room = max(0, system_budget - MESSAGE_OVERHEAD_TOKENS)
             system = Message(
                 ROLE_SYSTEM,
                 truncate_to_tokens(self.system_prompt, room),
@@ -204,8 +206,6 @@ class ContextWindow:
         used = system.tokens
 
         # 3.2 预留最新一条消息的位置
-        newest = self.messages[-1] if self.messages else None
-
         if newest is not None:
             used += newest.tokens
 
@@ -268,10 +268,11 @@ class ContextWindow:
         if body_room <= 0:
             return None
 
-        body = summary.content
-
-        if Message(ROLE_SYSTEM, body).tokens > body_room:
-            body = truncate_to_tokens(body, body_room) + "…"
+        body = truncate_to_tokens(summary.content, body_room)
+        while body and Message(ROLE_SYSTEM, SUMMARY_HEADER + body).tokens > room:
+            body = body[:-1]
+        if not body:
+            return None
 
         return Message(
             ROLE_SYSTEM,
