@@ -7,6 +7,25 @@
 
 ---
 
+## 架构图
+
+![life_assistant 架构](architecture.svg)
+
+| 文件 | 用途 |
+| --- | --- |
+| `architecture.drawio` | 原生可编辑图（draw.io / diagrams.net 打开） |
+| `architecture.svg` | 矢量图，浏览器直接看 |
+| `architecture.png` | 位图，方便贴文档 |
+
+图分六层：`main.py`（入口）→ `agent.py`（编排）→ `planners.py`（选择）
+→ `router.py`（规则）→ `tools.py`（工具）→ `providers.py`（数据），
+右侧是模型接口与关键约定。两条虚线是本示例最关键的两条路径：
+**离线路径接管模型**和**校验失败回喂**。
+
+> `.drawio` 是可编辑的源头；`svg` / `png` 由同一份布局数据渲染，改图建议直接改 `.drawio`。
+
+---
+
 ## 快速开始
 
 **必须在 `Demos/examples` 目录下运行**（包在 `examples` 下，Python 靠当前目录找包）：

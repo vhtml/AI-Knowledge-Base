@@ -1,0 +1,186 @@
+<mxfile host="app.diagrams.net" agent="life-assistant-arch">
+  <diagram id="life-assistant-arch" name="life_assistant 架构">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1560" pageHeight="1140" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+    <mxCell id="L1" value="入口层 · main.py（参数 · 模式 · 留痕）" style="swimlane;startSize=32;horizontal=1;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;fontSize=13;fontColor=#333333;rounded=1;arcSize=6;" vertex="1" parent="1">
+      <mxGeometry x="100" y="20" width="1000" height="110" as="geometry" />
+    </mxCell>
+    <mxCell id="c1" value="argparse 参数解析&lt;br>--task / --offline / --demo" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;fontSize=12;fontColor=#333333;" vertex="1" parent="L1">
+      <mxGeometry x="30" y="42" width="280" height="52" as="geometry" />
+    </mxCell>
+    <mxCell id="c2" value="模式选择&lt;br>交互 / 单句 / 演示剧本" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;fontSize=12;fontColor=#333333;" vertex="1" parent="L1">
+      <mxGeometry x="350" y="42" width="320" height="52" as="geometry" />
+    </mxCell>
+    <mxCell id="c3" value="留痕输出&lt;br>StepRecord → 终端逐步打印" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#82b366;fontSize=12;fontColor=#333333;" vertex="1" parent="L1">
+      <mxGeometry x="710" y="42" width="260" height="52" as="geometry" />
+    </mxCell>
+    <mxCell id="L2" value="编排层 · agent.py（一轮对话的编排）" style="swimlane;startSize=32;horizontal=1;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;fontSize=13;fontColor=#333333;rounded=1;arcSize=6;" vertex="1" parent="1">
+      <mxGeometry x="100" y="160" width="1000" height="150" as="geometry" />
+    </mxCell>
+    <mxCell id="c5" value="LifeAssistant.handle()&lt;br>选工具 → 校验 → 执行 → 回答&lt;br>（最多 6 轮，结果回填后继续）" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;fontSize=12;fontColor=#333333;" vertex="1" parent="L2">
+      <mxGeometry x="30" y="44" width="320" height="88" as="geometry" />
+    </mxCell>
+    <mxCell id="c6" value="参数校验（validation.py）&lt;br>validate → coerce → apply_defaults&lt;br>不合法就不执行工具" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;fontSize=12;fontColor=#333333;" vertex="1" parent="L2">
+      <mxGeometry x="390" y="44" width="300" height="88" as="geometry" />
+    </mxCell>
+    <mxCell id="c7" value="执行与兜底&lt;br>ToolError → 工具结果&lt;br>异常不打断整轮对话" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;fontSize=12;fontColor=#333333;" vertex="1" parent="L2">
+      <mxGeometry x="730" y="44" width="240" height="88" as="geometry" />
+    </mxCell>
+    <mxCell id="L3" value="选择层 · planners.py（谁来选工具）" style="swimlane;startSize=32;horizontal=1;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;fontSize=13;fontColor=#333333;rounded=1;arcSize=6;" vertex="1" parent="1">
+      <mxGeometry x="100" y="340" width="1000" height="150" as="geometry" />
+    </mxCell>
+    <mxCell id="c9" value="LLMPlanner&lt;br>模型 function calling&lt;br>看 schema 自己决定调哪个" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;fontSize=12;fontColor=#333333;" vertex="1" parent="L3">
+      <mxGeometry x="30" y="44" width="290" height="88" as="geometry" />
+    </mxCell>
+    <mxCell id="c10" value="RouterPlanner&lt;br>关键词规则 + 槽位抽取&lt;br>离线兜底 / 修复 / 追问" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;fontSize=12;fontColor=#333333;" vertex="1" parent="L3">
+      <mxGeometry x="350" y="44" width="300" height="88" as="geometry" />
+    </mxCell>
+    <mxCell id="c11" value="FallbackPlanner&lt;br>模型一报错就接管&lt;br>工具还在，换规则选" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#6c8ebf;fontSize=12;fontColor=#333333;" vertex="1" parent="L3">
+      <mxGeometry x="680" y="44" width="290" height="88" as="geometry" />
+    </mxCell>
+    <mxCell id="L4" value="规则层 · router.py（纯逻辑，不联网）" style="swimlane;startSize=32;horizontal=1;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=1;fontSize=13;fontColor=#333333;rounded=1;arcSize=6;" vertex="1" parent="1">
+      <mxGeometry x="100" y="520" width="1000" height="140" as="geometry" />
+    </mxCell>
+    <mxCell id="c13" value="关键词打分&lt;br>强词 2 分 / 弱词 1 分&lt;br>满 2 分才选中，可多选" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d6b656;fontSize=12;fontColor=#333333;" vertex="1" parent="L4">
+      <mxGeometry x="30" y="42" width="290" height="80" as="geometry" />
+    </mxCell>
+    <mxCell id="c14" value="槽位抽取&lt;br>city / expression&lt;br>offset_days / timezone" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d6b656;fontSize=12;fontColor=#333333;" vertex="1" parent="L4">
+      <mxGeometry x="350" y="42" width="290" height="80" as="geometry" />
+    </mxCell>
+    <mxCell id="c15" value="追问与补参&lt;br>缺参数 → 回问用户&lt;br>下一句补上" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#d6b656;fontSize=12;fontColor=#333333;" vertex="1" parent="L4">
+      <mxGeometry x="680" y="42" width="290" height="80" as="geometry" />
+    </mxCell>
+    <mxCell id="L5" value="工具层 · tools.py（schema + handler）" style="swimlane;startSize=32;horizontal=1;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1;fontSize=13;fontColor=#333333;rounded=1;arcSize=6;" vertex="1" parent="1">
+      <mxGeometry x="100" y="690" width="1000" height="170" as="geometry" />
+    </mxCell>
+    <mxCell id="c17" value="get_weather&lt;br>city（必填）&lt;br>day · unit" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#9673a6;fontSize=12;fontColor=#333333;" vertex="1" parent="L5">
+      <mxGeometry x="30" y="42" width="225" height="100" as="geometry" />
+    </mxCell>
+    <mxCell id="c18" value="calculate&lt;br>expression（必填）&lt;br>走 calc.py 白名单求值" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#9673a6;fontSize=12;fontColor=#333333;" vertex="1" parent="L5">
+      <mxGeometry x="280" y="42" width="225" height="100" as="geometry" />
+    </mxCell>
+    <mxCell id="c19" value="calc.py 安全求值&lt;br>AST 白名单&lt;br>只放行算术" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#9673a6;fontSize=12;fontColor=#333333;" vertex="1" parent="L5">
+      <mxGeometry x="530" y="42" width="225" height="100" as="geometry" />
+    </mxCell>
+    <mxCell id="c20" value="get_time&lt;br>timezone · city&lt;br>format · offset_days" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#9673a6;fontSize=12;fontColor=#333333;" vertex="1" parent="L5">
+      <mxGeometry x="780" y="42" width="190" height="100" as="geometry" />
+    </mxCell>
+    <mxCell id="L6" value="数据层 · providers.py（外部数据）" style="swimlane;startSize=32;horizontal=1;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontStyle=1;fontSize=13;fontColor=#333333;rounded=1;arcSize=6;" vertex="1" parent="1">
+      <mxGeometry x="100" y="890" width="1000" height="160" as="geometry" />
+    </mxCell>
+    <mxCell id="c25" value="Open-Meteo 天气&lt;br>地理编码 + 预报&lt;br>无需 API Key" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#b85450;fontSize=12;fontColor=#333333;" vertex="1" parent="L6">
+      <mxGeometry x="30" y="42" width="280" height="88" as="geometry" />
+    </mxCell>
+    <mxCell id="c26" value="FakeWeatherProvider&lt;br>离线假数据&lt;br>离线时替换真数据" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#b85450;fontSize=12;fontColor=#333333;" vertex="1" parent="L6">
+      <mxGeometry x="360" y="42" width="280" height="88" as="geometry" />
+    </mxCell>
+    <mxCell id="c27" value="时区与城市表&lt;br>zoneinfo + 70 个内置城市&lt;br>providers.py / cities.py" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#b85450;fontSize=12;fontColor=#333333;" vertex="1" parent="L6">
+      <mxGeometry x="690" y="42" width="280" height="88" as="geometry" />
+    </mxCell>
+    <mxCell id="R2" value="关键约定&lt;br>&lt;br>① 工具选择有两条路径&lt;br>模型 function calling 为主，规则路由兜底&lt;br>两者实现同一套 plan() / continue_plan()&lt;br>接口，编排层不关心走哪条&lt;br>&lt;br>② 参数校验分三层&lt;br>schema 层拦下不合法参数 → 工具根本不执行&lt;br>工具内再校验（时区存在？城市查得到？）&lt;br>执行期兜底（ToolError → 工具结果）&lt;br>&lt;br>③ 错误要能回喂&lt;br>校验失败点名字段 + 给下一步建议&lt;br>模型读到后自己改参数重调一次&lt;br>缺参数且推不出来 → 回问用户" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;align=left;spacingLeft=12;verticalAlign=top;fillColor=#ffffff;strokeColor=#999999;fontSize=12;fontColor=#333333;" vertex="1" parent="1">
+      <mxGeometry x="1180" y="20" width="340" height="350" as="geometry" />
+    </mxCell>
+    <mxCell id="R1" value="OpenAI 兼容接口&lt;br>&lt;br>chat.completions.create + tools&lt;br>LLM_BASE_URL / LLM_API_KEY / LLM_MODEL&lt;br>&lt;br>不支持 function calling 时自动退回规则路由" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;align=left;spacingLeft=12;verticalAlign=top;fillColor=#f5f5f5;strokeColor=#666666;fontSize=12;fontColor=#333333;" vertex="1" parent="1">
+      <mxGeometry x="1180" y="400" width="340" height="150" as="geometry" />
+    </mxCell>
+    <mxCell id="R3" value="外部依赖&lt;br>&lt;br>Open-Meteo：geocoding + forecast，无需 Key&lt;br>zoneinfo：系统时区库&lt;br>&lt;br>离线模式：假天气数据&lt;br>不出网、不消耗 token" style="rounded=1;arcSize=10;whiteSpace=wrap;html=1;align=left;spacingLeft=12;verticalAlign=top;fillColor=#ffffff;strokeColor=#999999;fontSize=12;fontColor=#333333;" vertex="1" parent="1">
+      <mxGeometry x="1180" y="890" width="340" height="160" as="geometry" />
+    </mxCell>
+    <mxCell id="F1" value="数据流：用户输入 → main 解析参数 → agent.handle() → planners 选工具 → agent 校验参数（不合法则修复 / 回问）→ 执行 tools → 结果回喂 → 组织回答" style="text;html=1;align=left;verticalAlign=middle;fontSize=12;fontColor=#555555;" vertex="1" parent="1">
+      <mxGeometry x="100" y="1070" width="1000" height="38" as="geometry" />
+    </mxCell>
+    <mxCell id="e1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;jettySize=auto;html=1;exitX=1.0000;exitY=0.5000;exitDx=0;exitDy=0;entryX=0.0000;entryY=0.5000;entryDx=0;entryDy=0;strokeColor=#666666;strokeWidth=1.5;fontSize=11;fontColor=#555555;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="c1" target="c2">
+      <mxGeometry relative="1" as="geometry">
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="e2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;jettySize=auto;html=1;exitX=1.0000;exitY=0.5000;exitDx=0;exitDy=0;entryX=0.0000;entryY=0.5000;entryDx=0;entryDy=0;strokeColor=#666666;strokeWidth=1.5;fontSize=11;fontColor=#555555;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="c2" target="c3">
+      <mxGeometry relative="1" as="geometry">
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="e3" value="一轮对话" style="edgeStyle=orthogonalEdgeStyle;rounded=1;jettySize=auto;html=1;exitX=0.5000;exitY=1.0000;exitDx=0;exitDy=0;entryX=0.5000;entryY=0.0000;entryDx=0;entryDy=0;strokeColor=#666666;strokeWidth=1.5;fontSize=11;fontColor=#555555;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="c2" target="c5">
+      <mxGeometry relative="1" as="geometry">
+        <Array as="points">
+          <mxPoint x="610" y="140" />
+          <mxPoint x="290" y="140" />
+        </Array>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="e4" value="plan() 选工具" style="edgeStyle=orthogonalEdgeStyle;rounded=1;jettySize=auto;html=1;exitX=0.5000;exitY=1.0000;exitDx=0;exitDy=0;entryX=0.5000;entryY=0.0000;entryDx=0;entryDy=0;strokeColor=#666666;strokeWidth=1.5;fontSize=11;fontColor=#555555;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="c5" target="c9">
+      <mxGeometry relative="1" as="geometry">
+        <Array as="points">
+          <mxPoint x="290" y="338" />
+          <mxPoint x="275" y="338" />
+        </Array>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="e5" value="plan() 离线兜底" style="edgeStyle=orthogonalEdgeStyle;rounded=1;jettySize=auto;html=1;exitX=0.9000;exitY=1.0000;exitDx=0;exitDy=0;entryX=0.2000;entryY=0.0000;entryDx=0;entryDy=0;strokeColor=#666666;strokeWidth=1.5;dashed=1;fontSize=11;fontColor=#555555;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="c5" target="c10">
+      <mxGeometry relative="1" as="geometry">
+        <Array as="points">
+          <mxPoint x="418" y="315" />
+          <mxPoint x="510" y="315" />
+        </Array>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="e6" value="关键词命中" style="edgeStyle=orthogonalEdgeStyle;rounded=1;jettySize=auto;html=1;exitX=0.2000;exitY=1.0000;exitDx=0;exitDy=0;entryX=0.5000;entryY=0.0000;entryDx=0;entryDy=0;strokeColor=#666666;strokeWidth=1.5;dashed=1;fontSize=11;fontColor=#555555;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="c10" target="c13">
+      <mxGeometry relative="1" as="geometry">
+        <Array as="points">
+          <mxPoint x="510" y="500" />
+          <mxPoint x="275" y="500" />
+        </Array>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="e7" value="执行工具" style="edgeStyle=orthogonalEdgeStyle;rounded=1;jettySize=auto;html=1;exitX=0.0500;exitY=1.0000;exitDx=0;exitDy=0;entryX=0.0000;entryY=0.5000;entryDx=0;entryDy=0;strokeColor=#666666;strokeWidth=1.5;fontSize=11;fontColor=#555555;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="c7" target="c17">
+      <mxGeometry relative="1" as="geometry">
+        <Array as="points">
+          <mxPoint x="842" y="305" />
+          <mxPoint x="60" y="305" />
+          <mxPoint x="60" y="782" />
+        </Array>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="e8" value="function calling" style="edgeStyle=orthogonalEdgeStyle;rounded=1;jettySize=auto;html=1;exitX=1.0000;exitY=0.5000;exitDx=0;exitDy=0;entryX=0.0000;entryY=0.5000;entryDx=0;entryDy=0;strokeColor=#666666;strokeWidth=1.5;fontSize=11;fontColor=#555555;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="L3" target="R1">
+      <mxGeometry relative="1" as="geometry">
+        <Array as="points">
+          <mxPoint x="1140" y="415" />
+          <mxPoint x="1140" y="475" />
+        </Array>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="e9" value="缺参数 → 追问" style="edgeStyle=orthogonalEdgeStyle;rounded=1;jettySize=auto;html=1;exitX=0.9000;exitY=1.0000;exitDx=0;exitDy=0;entryX=0.5000;entryY=0.0000;entryDx=0;entryDy=0;strokeColor=#666666;strokeWidth=1.5;dashed=1;fontSize=11;fontColor=#555555;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="c10" target="c15">
+      <mxGeometry relative="1" as="geometry">
+        <Array as="points">
+          <mxPoint x="720" y="500" />
+          <mxPoint x="925" y="500" />
+        </Array>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="e11" value="查天气" style="edgeStyle=orthogonalEdgeStyle;rounded=1;jettySize=auto;html=1;exitX=0.5000;exitY=1.0000;exitDx=0;exitDy=0;entryX=0.4000;entryY=0.0000;entryDx=0;entryDy=0;strokeColor=#666666;strokeWidth=1.5;fontSize=11;fontColor=#555555;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="c17" target="c25">
+      <mxGeometry relative="1" as="geometry">
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="e12" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;jettySize=auto;html=1;exitX=1.0000;exitY=0.5000;exitDx=0;exitDy=0;entryX=0.0000;entryY=0.5000;entryDx=0;entryDy=0;strokeColor=#666666;strokeWidth=1.5;fontSize=11;fontColor=#555555;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="c18" target="c19">
+      <mxGeometry relative="1" as="geometry">
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="e13" value="查时间" style="edgeStyle=orthogonalEdgeStyle;rounded=1;jettySize=auto;html=1;exitX=0.5000;exitY=1.0000;exitDx=0;exitDy=0;entryX=0.5000;entryY=0.0000;entryDx=0;entryDy=0;strokeColor=#666666;strokeWidth=1.5;fontSize=11;fontColor=#555555;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="c20" target="c27">
+      <mxGeometry relative="1" as="geometry">
+        <Array as="points">
+          <mxPoint x="975" y="880" />
+          <mxPoint x="930" y="880" />
+        </Array>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="e14" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;jettySize=auto;html=1;exitX=1.0000;exitY=0.5000;exitDx=0;exitDy=0;entryX=0.0000;entryY=0.5000;entryDx=0;entryDy=0;strokeColor=#666666;strokeWidth=1.5;dashed=1;fontSize=11;fontColor=#555555;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="c25" target="c26">
+      <mxGeometry relative="1" as="geometry">
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="e15" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;jettySize=auto;html=1;exitX=1.0000;exitY=0.5000;exitDx=0;exitDy=0;entryX=0.0000;entryY=0.5000;entryDx=0;entryDy=0;strokeColor=#666666;strokeWidth=1.5;fontSize=11;fontColor=#555555;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="L6" target="R3">
+      <mxGeometry relative="1" as="geometry">
+      </mxGeometry>
+    </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

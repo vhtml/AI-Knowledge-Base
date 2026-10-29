@@ -1,0 +1,160 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1560" height="1140" viewBox="0 0 1560 1140" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif">
+<defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#666666"/></marker></defs>
+<rect width="1560" height="1140" fill="#ffffff"/>
+<rect x="100" y="20" width="1000" height="110" rx="8" ry="8" fill="#d5e8d4" stroke="#82b366" stroke-width="1.5"/>
+<line x1="100" y1="52" x2="1100" y2="52" stroke="#82b366" stroke-width="1"/>
+<text x="116.0" y="37.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="13" fill="#333333" font-weight="bold" text-anchor="start" dominant-baseline="middle">入口层 · main.py（参数 · 模式 · 留痕）</text>
+<rect x="100" y="160" width="1000" height="150" rx="8" ry="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.5"/>
+<line x1="100" y1="192" x2="1100" y2="192" stroke="#6c8ebf" stroke-width="1"/>
+<text x="116.0" y="177.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="13" fill="#333333" font-weight="bold" text-anchor="start" dominant-baseline="middle">编排层 · agent.py（一轮对话的编排）</text>
+<rect x="100" y="340" width="1000" height="150" rx="8" ry="8" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.5"/>
+<line x1="100" y1="372" x2="1100" y2="372" stroke="#6c8ebf" stroke-width="1"/>
+<text x="116.0" y="357.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="13" fill="#333333" font-weight="bold" text-anchor="start" dominant-baseline="middle">选择层 · planners.py（谁来选工具）</text>
+<rect x="100" y="520" width="1000" height="140" rx="8" ry="8" fill="#fff2cc" stroke="#d6b656" stroke-width="1.5"/>
+<line x1="100" y1="552" x2="1100" y2="552" stroke="#d6b656" stroke-width="1"/>
+<text x="116.0" y="537.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="13" fill="#333333" font-weight="bold" text-anchor="start" dominant-baseline="middle">规则层 · router.py（纯逻辑，不联网）</text>
+<rect x="100" y="690" width="1000" height="170" rx="8" ry="8" fill="#e1d5e7" stroke="#9673a6" stroke-width="1.5"/>
+<line x1="100" y1="722" x2="1100" y2="722" stroke="#9673a6" stroke-width="1"/>
+<text x="116.0" y="707.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="13" fill="#333333" font-weight="bold" text-anchor="start" dominant-baseline="middle">工具层 · tools.py（schema + handler）</text>
+<rect x="100" y="890" width="1000" height="160" rx="8" ry="8" fill="#f8cecc" stroke="#b85450" stroke-width="1.5"/>
+<line x1="100" y1="922" x2="1100" y2="922" stroke="#b85450" stroke-width="1"/>
+<text x="116.0" y="907.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="13" fill="#333333" font-weight="bold" text-anchor="start" dominant-baseline="middle">数据层 · providers.py（外部数据）</text>
+<rect x="130" y="62" width="280" height="52" rx="10" ry="10" fill="#ffffff" stroke="#82b366" stroke-width="1.5"/>
+<text x="270.0" y="79.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="middle" dominant-baseline="middle">argparse 参数解析</text>
+<text x="270.0" y="97.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="middle" dominant-baseline="middle">--task / --offline / --demo</text>
+<rect x="450" y="62" width="320" height="52" rx="10" ry="10" fill="#ffffff" stroke="#82b366" stroke-width="1.5"/>
+<text x="610.0" y="79.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="middle" dominant-baseline="middle">模式选择</text>
+<text x="610.0" y="97.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="middle" dominant-baseline="middle">交互 / 单句 / 演示剧本</text>
+<rect x="810" y="62" width="260" height="52" rx="10" ry="10" fill="#ffffff" stroke="#82b366" stroke-width="1.5"/>
+<text x="940.0" y="79.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="middle" dominant-baseline="middle">留痕输出</text>
+<text x="940.0" y="97.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="middle" dominant-baseline="middle">StepRecord → 终端逐步打印</text>
+<rect x="130" y="204" width="320" height="88" rx="10" ry="10" fill="#ffffff" stroke="#6c8ebf" stroke-width="1.5"/>
+<text x="290.0" y="230.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="middle" dominant-baseline="middle">LifeAssistant.handle()</text>
+<text x="290.0" y="248.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="middle" dominant-baseline="middle">选工具 → 校验 → 执行 → 回答</text>
+<text x="290.0" y="266.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="middle" dominant-baseline="middle">（最多 6 轮，结果回填后继续）</text>
+<rect x="490" y="204" width="300" height="88" rx="10" ry="10" fill="#ffffff" stroke="#6c8ebf" stroke-width="1.5"/>
+<text x="640.0" y="230.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="middle" dominant-baseline="middle">参数校验（validation.py）</text>
+<text x="640.0" y="248.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="middle" dominant-baseline="middle">validate → coerce → apply_defaults</text>
+<text x="640.0" y="266.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="middle" dominant-baseline="middle">不合法就不执行工具</text>
+<rect x="830" y="204" width="240" height="88" rx="10" ry="10" fill="#ffffff" stroke="#6c8ebf" stroke-width="1.5"/>
+<text x="950.0" y="230.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="middle" dominant-baseline="middle">执行与兜底</text>
+<text x="950.0" y="248.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="middle" dominant-baseline="middle">ToolError → 工具结果</text>
+<text x="950.0" y="266.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="middle" dominant-baseline="middle">异常不打断整轮对话</text>
+<rect x="130" y="384" width="290" height="88" rx="10" ry="10" fill="#ffffff" stroke="#6c8ebf" stroke-width="1.5"/>
+<text x="275.0" y="410.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="middle" dominant-baseline="middle">LLMPlanner</text>
+<text x="275.0" y="428.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="middle" dominant-baseline="middle">模型 function calling</text>
+<text x="275.0" y="446.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="middle" dominant-baseline="middle">看 schema 自己决定调哪个</text>
+<rect x="450" y="384" width="300" height="88" rx="10" ry="10" fill="#ffffff" stroke="#6c8ebf" stroke-width="1.5"/>
+<text x="600.0" y="410.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="middle" dominant-baseline="middle">RouterPlanner</text>
+<text x="600.0" y="428.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="middle" dominant-baseline="middle">关键词规则 + 槽位抽取</text>
+<text x="600.0" y="446.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="middle" dominant-baseline="middle">离线兜底 / 修复 / 追问</text>
+<rect x="780" y="384" width="290" height="88" rx="10" ry="10" fill="#ffffff" stroke="#6c8ebf" stroke-width="1.5"/>
+<text x="925.0" y="410.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="middle" dominant-baseline="middle">FallbackPlanner</text>
+<text x="925.0" y="428.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="middle" dominant-baseline="middle">模型一报错就接管</text>
+<text x="925.0" y="446.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="middle" dominant-baseline="middle">工具还在，换规则选</text>
+<rect x="130" y="562" width="290" height="80" rx="10" ry="10" fill="#ffffff" stroke="#d6b656" stroke-width="1.5"/>
+<text x="275.0" y="584.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="middle" dominant-baseline="middle">关键词打分</text>
+<text x="275.0" y="602.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="middle" dominant-baseline="middle">强词 2 分 / 弱词 1 分</text>
+<text x="275.0" y="620.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="middle" dominant-baseline="middle">满 2 分才选中，可多选</text>
+<rect x="450" y="562" width="290" height="80" rx="10" ry="10" fill="#ffffff" stroke="#d6b656" stroke-width="1.5"/>
+<text x="595.0" y="584.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="middle" dominant-baseline="middle">槽位抽取</text>
+<text x="595.0" y="602.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="middle" dominant-baseline="middle">city / expression</text>
+<text x="595.0" y="620.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="middle" dominant-baseline="middle">offset_days / timezone</text>
+<rect x="780" y="562" width="290" height="80" rx="10" ry="10" fill="#ffffff" stroke="#d6b656" stroke-width="1.5"/>
+<text x="925.0" y="584.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="middle" dominant-baseline="middle">追问与补参</text>
+<text x="925.0" y="602.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="middle" dominant-baseline="middle">缺参数 → 回问用户</text>
+<text x="925.0" y="620.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="middle" dominant-baseline="middle">下一句补上</text>
+<rect x="130" y="732" width="225" height="100" rx="10" ry="10" fill="#ffffff" stroke="#9673a6" stroke-width="1.5"/>
+<text x="242.5" y="764.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="middle" dominant-baseline="middle">get_weather</text>
+<text x="242.5" y="782.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="middle" dominant-baseline="middle">city（必填）</text>
+<text x="242.5" y="800.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="middle" dominant-baseline="middle">day · unit</text>
+<rect x="380" y="732" width="225" height="100" rx="10" ry="10" fill="#ffffff" stroke="#9673a6" stroke-width="1.5"/>
+<text x="492.5" y="764.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="middle" dominant-baseline="middle">calculate</text>
+<text x="492.5" y="782.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="middle" dominant-baseline="middle">expression（必填）</text>
+<text x="492.5" y="800.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="middle" dominant-baseline="middle">走 calc.py 白名单求值</text>
+<rect x="630" y="732" width="225" height="100" rx="10" ry="10" fill="#ffffff" stroke="#9673a6" stroke-width="1.5"/>
+<text x="742.5" y="764.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="middle" dominant-baseline="middle">calc.py 安全求值</text>
+<text x="742.5" y="782.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="middle" dominant-baseline="middle">AST 白名单</text>
+<text x="742.5" y="800.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="middle" dominant-baseline="middle">只放行算术</text>
+<rect x="880" y="732" width="190" height="100" rx="10" ry="10" fill="#ffffff" stroke="#9673a6" stroke-width="1.5"/>
+<text x="975.0" y="764.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="middle" dominant-baseline="middle">get_time</text>
+<text x="975.0" y="782.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="middle" dominant-baseline="middle">timezone · city</text>
+<text x="975.0" y="800.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="middle" dominant-baseline="middle">format · offset_days</text>
+<rect x="130" y="932" width="280" height="88" rx="10" ry="10" fill="#ffffff" stroke="#b85450" stroke-width="1.5"/>
+<text x="270.0" y="958.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="middle" dominant-baseline="middle">Open-Meteo 天气</text>
+<text x="270.0" y="976.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="middle" dominant-baseline="middle">地理编码 + 预报</text>
+<text x="270.0" y="994.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="middle" dominant-baseline="middle">无需 API Key</text>
+<rect x="460" y="932" width="280" height="88" rx="10" ry="10" fill="#ffffff" stroke="#b85450" stroke-width="1.5"/>
+<text x="600.0" y="958.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="middle" dominant-baseline="middle">FakeWeatherProvider</text>
+<text x="600.0" y="976.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="middle" dominant-baseline="middle">离线假数据</text>
+<text x="600.0" y="994.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="middle" dominant-baseline="middle">离线时替换真数据</text>
+<rect x="790" y="932" width="280" height="88" rx="10" ry="10" fill="#ffffff" stroke="#b85450" stroke-width="1.5"/>
+<text x="930.0" y="958.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="middle" dominant-baseline="middle">时区与城市表</text>
+<text x="930.0" y="976.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="middle" dominant-baseline="middle">zoneinfo + 70 个内置城市</text>
+<text x="930.0" y="994.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="middle" dominant-baseline="middle">providers.py / cities.py</text>
+<rect x="1180" y="20" width="340" height="350" rx="10" ry="10" fill="#ffffff" stroke="#999999" stroke-width="1.5"/>
+<text x="1194.0" y="46.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="start" dominant-baseline="middle">关键约定</text>
+<text x="1194.0" y="64.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="start" dominant-baseline="middle"></text>
+<text x="1194.0" y="82.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="start" dominant-baseline="middle">① 工具选择有两条路径</text>
+<text x="1194.0" y="100.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="start" dominant-baseline="middle">模型 function calling 为主，规则路由兜底</text>
+<text x="1194.0" y="118.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="start" dominant-baseline="middle">两者实现同一套 plan() / continue_plan()</text>
+<text x="1194.0" y="136.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="start" dominant-baseline="middle">接口，编排层不关心走哪条</text>
+<text x="1194.0" y="154.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="start" dominant-baseline="middle"></text>
+<text x="1194.0" y="172.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="start" dominant-baseline="middle">② 参数校验分三层</text>
+<text x="1194.0" y="190.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="start" dominant-baseline="middle">schema 层拦下不合法参数 → 工具根本不执行</text>
+<text x="1194.0" y="208.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="start" dominant-baseline="middle">工具内再校验（时区存在？城市查得到？）</text>
+<text x="1194.0" y="226.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="start" dominant-baseline="middle">执行期兜底（ToolError → 工具结果）</text>
+<text x="1194.0" y="244.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="start" dominant-baseline="middle"></text>
+<text x="1194.0" y="262.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="start" dominant-baseline="middle">③ 错误要能回喂</text>
+<text x="1194.0" y="280.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="start" dominant-baseline="middle">校验失败点名字段 + 给下一步建议</text>
+<text x="1194.0" y="298.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="start" dominant-baseline="middle">模型读到后自己改参数重调一次</text>
+<text x="1194.0" y="316.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="start" dominant-baseline="middle">缺参数且推不出来 → 回问用户</text>
+<rect x="1180" y="400" width="340" height="150" rx="10" ry="10" fill="#f5f5f5" stroke="#666666" stroke-width="1.5"/>
+<text x="1194.0" y="426.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="start" dominant-baseline="middle">OpenAI 兼容接口</text>
+<text x="1194.0" y="444.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="start" dominant-baseline="middle"></text>
+<text x="1194.0" y="462.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="start" dominant-baseline="middle">chat.completions.create + tools</text>
+<text x="1194.0" y="480.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="start" dominant-baseline="middle">LLM_BASE_URL / LLM_API_KEY / LLM_MODEL</text>
+<text x="1194.0" y="498.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="start" dominant-baseline="middle"></text>
+<text x="1194.0" y="516.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="start" dominant-baseline="middle">不支持 function calling 时自动退回规则路由</text>
+<rect x="1180" y="890" width="340" height="160" rx="10" ry="10" fill="#ffffff" stroke="#999999" stroke-width="1.5"/>
+<text x="1194.0" y="916.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="start" dominant-baseline="middle">外部依赖</text>
+<text x="1194.0" y="934.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="start" dominant-baseline="middle"></text>
+<text x="1194.0" y="952.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="start" dominant-baseline="middle">Open-Meteo：geocoding + forecast，无需 Key</text>
+<text x="1194.0" y="970.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="start" dominant-baseline="middle">zoneinfo：系统时区库</text>
+<text x="1194.0" y="988.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="start" dominant-baseline="middle"></text>
+<text x="1194.0" y="1006.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="start" dominant-baseline="middle">离线模式：假天气数据</text>
+<text x="1194.0" y="1024.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#333333" font-weight="normal" text-anchor="start" dominant-baseline="middle">不出网、不消耗 token</text>
+<path d="M410,88 L450,88" fill="none" stroke="#666666" stroke-width="1.5" marker-end="url(#arrow)"/>
+<path d="M770,88 L810,88" fill="none" stroke="#666666" stroke-width="1.5" marker-end="url(#arrow)"/>
+<path d="M610,114 L610,140 L290,140 L290,204" fill="none" stroke="#666666" stroke-width="1.5" marker-end="url(#arrow)"/>
+<rect x="421.0" y="129.0" width="58.0" height="22" fill="#ffffff" rx="4"/>
+<text x="450.0" y="140.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="11" fill="#555555" font-weight="normal" text-anchor="middle" dominant-baseline="middle">一轮对话</text>
+<path d="M290,292 L290,338 L275,338 L275,384" fill="none" stroke="#666666" stroke-width="1.5" marker-end="url(#arrow)"/>
+<rect x="225.0" y="304.0" width="130.0" height="22" fill="#ffffff" rx="4"/>
+<text x="290.0" y="315.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="11" fill="#555555" font-weight="normal" text-anchor="middle" dominant-baseline="middle">plan() 选工具</text>
+<path d="M418,292 L418,315 L510,315 L510,384" fill="none" stroke="#666666" stroke-width="1.5" marker-end="url(#arrow)" stroke-dasharray="6 4"/>
+<rect x="393.0" y="304.0" width="142.0" height="22" fill="#ffffff" rx="4"/>
+<text x="464.0" y="315.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="11" fill="#555555" font-weight="normal" text-anchor="middle" dominant-baseline="middle">plan() 离线兜底</text>
+<path d="M510,472 L510,500 L275,500 L275,562" fill="none" stroke="#666666" stroke-width="1.5" marker-end="url(#arrow)" stroke-dasharray="6 4"/>
+<rect x="357.5" y="489.0" width="70.0" height="22" fill="#ffffff" rx="4"/>
+<text x="392.5" y="500.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="11" fill="#555555" font-weight="normal" text-anchor="middle" dominant-baseline="middle">关键词命中</text>
+<path d="M842,292 L842,305 L60,305 L60,782 L130,782" fill="none" stroke="#666666" stroke-width="1.5" marker-end="url(#arrow)"/>
+<rect x="31.0" y="409.0" width="58.0" height="22" fill="#ffffff" rx="4"/>
+<text x="60.0" y="420.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="11" fill="#555555" font-weight="normal" text-anchor="middle" dominant-baseline="middle">执行工具</text>
+<path d="M1100,415 L1140,415 L1140,475 L1180,475" fill="none" stroke="#666666" stroke-width="1.5" marker-end="url(#arrow)"/>
+<rect x="1044.0" y="437.0" width="202.0" height="22" fill="#ffffff" rx="4"/>
+<text x="1145.0" y="448.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="11" fill="#555555" font-weight="normal" text-anchor="middle" dominant-baseline="middle">function calling</text>
+<path d="M720,472 L720,500 L925,500 L925,562" fill="none" stroke="#666666" stroke-width="1.5" marker-end="url(#arrow)" stroke-dasharray="6 4"/>
+<rect x="769.5" y="489.0" width="106.0" height="22" fill="#ffffff" rx="4"/>
+<text x="822.5" y="500.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="11" fill="#555555" font-weight="normal" text-anchor="middle" dominant-baseline="middle">缺参数 → 追问</text>
+<path d="M242,832 L242,932" fill="none" stroke="#666666" stroke-width="1.5" marker-end="url(#arrow)"/>
+<rect x="219.0" y="871.0" width="46.0" height="22" fill="#ffffff" rx="4"/>
+<text x="242.0" y="882.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="11" fill="#555555" font-weight="normal" text-anchor="middle" dominant-baseline="middle">查天气</text>
+<path d="M605,782 L630,782" fill="none" stroke="#666666" stroke-width="1.5" marker-end="url(#arrow)"/>
+<path d="M975,832 L975,880 L930,880 L930,932" fill="none" stroke="#666666" stroke-width="1.5" marker-end="url(#arrow)"/>
+<rect x="907.0" y="895.0" width="46.0" height="22" fill="#ffffff" rx="4"/>
+<text x="930.0" y="906.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="11" fill="#555555" font-weight="normal" text-anchor="middle" dominant-baseline="middle">查时间</text>
+<path d="M410,976 L460,976" fill="none" stroke="#666666" stroke-width="1.5" marker-end="url(#arrow)" stroke-dasharray="6 4"/>
+<path d="M1100,970 L1180,970" fill="none" stroke="#666666" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text x="100.0" y="1088.0" font-family="PingFang SC, Hiragino Sans GB, Microsoft YaHei, Heiti SC, sans-serif" font-size="12" fill="#555555" font-weight="normal" text-anchor="start" dominant-baseline="middle">数据流：用户输入 → main 解析参数 → agent.handle() → planners 选工具 → agent 校验参数（不合法则修复 / 回问）→ 执行 tools → 结果回喂 → 组织回答</text>
+</svg>
