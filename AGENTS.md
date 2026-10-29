@@ -22,7 +22,7 @@ Python 用 `uv` 管理依赖（Python 3.13），前端用 `npm`。
 - 启动后端：`cd Demos && uv run uvicorn examples.rag-demo.backend.main:app --reload --port 8000`
 - 启动前端：`cd Demos/examples/rag-demo/frontend && npm install && npm run dev`（http://localhost:5173）
 - 前端构建：`npm run build`（产物在 `dist/`，不提交）
-- 架构图：`chat_cli/architecture.drawio` 是可编辑源头，`.svg` / `.png` 由它渲染——改图请改 `.drawio`
+- 架构图：`chat_cli/architecture.drawio`、`life_assistant/architecture.drawio` 是可编辑源头，`.svg` / `.png` 由它渲染——改图请改 `.drawio`
 
 ## 代码风格
 
