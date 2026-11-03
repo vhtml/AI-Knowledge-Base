@@ -7,6 +7,28 @@ const store = usePlannerStore()
 
 const tab = ref('today')
 const showSuperseded = ref(false)
+const editing = ref(null)
+const deleting = ref(null)
+
+function editMemory(item) {
+  editing.value = { item, content: item.content, value: '', scope: 'default' }
+}
+
+async function saveMemory() {
+  const form = editing.value
+  const changes = { content: form.content }
+  if (form.value !== '') { changes.value = Number(form.value); changes.scope = form.scope }
+  if (await store.updateMemory(form.item, changes)) editing.value = null
+}
+
+async function previewDeletion(item) {
+  try { deleting.value = { item, preview: await store.previewDeletion(item) } }
+  catch (err) { store.error = err.message }
+}
+
+async function confirmDeletion() {
+  if (await store.deleteMemory(deleting.value.item)) deleting.value = null
+}
 
 const TABS = [
   { key: 'today', label: '今日' },
@@ -133,6 +155,19 @@ function goalTitle(goalId) {
         </span>
       </div>
 
+      <form v-if="editing" class="memory-editor" @submit.prevent="saveMemory">
+        <h3>纠正记忆</h3>
+        <label>内容<textarea v-model="editing.content" required maxlength="1000"></textarea></label>
+        <label>每日预算（仅修改时间时填写，分钟）<input v-model="editing.value" type="number" min="15" max="480" /></label>
+        <label>适用范围<select v-model="editing.scope"><option value="default">每天默认</option><option value="weekday">工作日</option><option value="weekend">周末</option></select></label>
+        <button type="submit">保存纠正</button><button type="button" @click="editing = null">取消</button>
+      </form>
+      <div v-if="deleting" class="memory-editor" role="alert">
+        <h3>确认清除影响</h3>
+        <p>{{ deleting.preview.effect }}</p>
+        <p>关联来源：{{ deleting.preview.source_ids.length }} 条</p>
+        <button type="button" @click="confirmDeletion">确认删除</button><button type="button" @click="deleting = null">取消</button>
+      </div>
       <!-- 长期档案 -->
       <section class="mem-section">
         <h3 class="mem-title">
@@ -154,11 +189,22 @@ function goalTitle(goalId) {
           >
             <div class="mem-head">
               <span class="mem-cat">{{ item.category }}</span>
-              <span class="mem-mentions">×{{ item.mentions }}</span>
+              <span class="mem-mentions">{{ { active: '已生效', pending: '待确认', superseded: '已取代', expired: '已过期' }[item.status] || item.status }}</span>
             </div>
             <p class="mem-content">{{ item.content }}</p>
+            <details v-if="item.sources?.length">
+              <summary>查看来源</summary>
+              <p v-for="source in item.sources" :key="source.source_id" class="mem-note">{{ source.excerpt }}</p>
+            </details>
+            <div class="memory-actions">
+              <button v-if="item.status === 'pending'" type="button" @click="store.updateMemory(item)">确认</button>
+              <button v-if="['active','pending'].includes(item.status)" type="button" @click="editMemory(item)">纠正</button>
+              <button type="button" @click="previewDeletion(item)">删除</button>
+            </div>
           </li>
         </ul>
+
+        <button v-if="store.memoryHasMore" type="button" @click="store.loadMoreMemories()">加载更多记忆</button>
 
         <label v-if="store.longTermSuperseded.length" class="mem-toggle">
           <input v-model="showSuperseded" type="checkbox" />
@@ -172,7 +218,7 @@ function goalTitle(goalId) {
           短期工作区
           <span class="mem-count">{{ shortTermShown.length }}</span>
         </h3>
-        <p class="mem-note">当天有效，满了折叠成摘要，跨天清空</p>
+        <p class="mem-note">会话原文持久保留，发送给模型的上下文按预算整理</p>
 
         <div v-if="!shortTermShown.length" class="panel-empty panel-empty--tight">
           <p>工作区是空的。</p>
@@ -187,7 +233,7 @@ function goalTitle(goalId) {
           >
             <div class="mem-head">
               <span class="mem-cat">{{ item.category }}</span>
-              <span class="mem-mentions">×{{ item.mentions }}</span>
+              <span class="mem-mentions">{{ item.role === 'user' ? '用户' : '助手' }}</span>
             </div>
             <p class="mem-content">{{ item.content }}</p>
           </li>
@@ -198,6 +244,12 @@ function goalTitle(goalId) {
 </template>
 
 <style scoped>
+.memory-editor { padding: 12px; border: 1px solid var(--border); border-radius: 10px; margin-bottom: 16px; }
+.memory-editor label { display: grid; gap: 5px; margin-bottom: 10px; font-size: 12px; }
+.memory-editor textarea, .memory-editor input, .memory-editor select { width: 100%; padding: 6px; border: 1px solid var(--border); border-radius: 5px; }
+.memory-actions { display: flex; gap: 10px; margin-top: 8px; }
+.memory-actions button, .memory-editor button { padding: 4px 8px; margin-right: 5px; }
+
 .side {
   display: flex;
   flex-direction: column;

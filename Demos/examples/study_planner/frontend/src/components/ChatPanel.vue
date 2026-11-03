@@ -58,6 +58,7 @@ watch(
 
 <template>
   <section class="chat">
+    <button v-if="store.historyHasMore" type="button" @click="store.loadHistory(true)">加载更早对话</button>
     <!-- 消息流 -->
     <div ref="listRef" class="chat-list" role="log" aria-live="polite">
       <div v-if="!store.messages.length" class="chat-empty">

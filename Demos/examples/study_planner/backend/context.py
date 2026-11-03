@@ -58,7 +58,7 @@ class ContextBuilder:
                 raise ServiceError("CONTEXT_TOO_LARGE", "本轮输入与必要事实超出上下文预算，请缩短输入", 422)
             source_ids = [current["id"]] + [r[0] for r in db.execute("SELECT m.id FROM memories m JOIN constraints c ON c.id=m.constraint_id WHERE m.status='active' AND c.status='active'")]
             grouped: dict[str, list] = {}
-            history = db.execute("SELECT m.* FROM messages m JOIN turns t ON t.id=m.turn_id WHERE m.conversation_id=? AND m.turn_id!=? AND t.status='completed' AND m.deleted=0 ORDER BY m.seq DESC LIMIT 64", (turn["conversation_id"], turn_id)).fetchall()
+            history = db.execute("SELECT m.* FROM messages m JOIN turns t ON t.id=m.turn_id WHERE m.conversation_id=? AND m.turn_id!=? AND t.status='completed' AND m.deleted=0 AND NOT EXISTS (SELECT 1 FROM memory_sources s JOIN memories old ON old.id=s.memory_id WHERE s.source_id=m.id AND old.constraint_id IS NOT NULL AND old.status IN ('superseded','expired','deleted')) ORDER BY m.seq DESC LIMIT 64", (turn["conversation_id"], turn_id)).fetchall()
             for row in history:
                 grouped.setdefault(row["turn_id"], []).append(row)
             clipping = []

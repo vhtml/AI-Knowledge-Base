@@ -11,6 +11,8 @@ from datetime import date, datetime, timedelta
 
 from .context import Clock, ContextBuilder
 from .maintenance import Maintenance
+from .deletion import DeletionService
+from .retrieval import Retrieval
 from .agent import StepRecord, StudyPlanner, Turn, detect_intent
 from .db import transaction
 from .llm import ACT_ALL, DECIDE_SYSTEM_PROMPT, REPLY_SYSTEM_PROMPT
@@ -18,7 +20,7 @@ from .memory import MemoryManager
 from .memory_types import OperationResult, ServiceError
 from .models import MemoryItem
 from .memory_types import MemoryCandidate
-from .memory_policy import budget_candidate, resolve_daily_minutes, store_candidate
+from .memory_policy import budget_candidate, resolve_daily_minutes, store_candidate, confirm_memory
 from .planner import generate_plan, replace_pending_plan
 from .repositories import Repository, dumps, now_iso, uid
 
@@ -49,6 +51,9 @@ class TurnService:
             imported = db.execute("SELECT 1 FROM imports LIMIT 1").fetchone()
         if not imported and any((self.repo.root / name).exists() for name in ("goals.json", "plans.json", "memory.json", "reviews.json")):
             raise ValueError("发现旧 JSON，请先运行 migrate_data --dry-run 并正式导入")
+        self.deletion = DeletionService(self.repo)
+        self.deletion.initialize()
+        self.retrieval = Retrieval(self.repo, self.clock)
         self.recover()
 
     def recover(self) -> None:
@@ -92,6 +97,12 @@ class TurnService:
         turn_id, fresh = self.accept(conversation_id, request_id, text, command, payload)
         if on_event:
             on_event("operation", {"turn_id": turn_id, "request_id": request_id})
+        if fresh and command in ("reset", "memory_delete"):
+            if command == "reset":
+                self.deletion.reset(turn_id)
+            else:
+                self.deletion.delete(payload["id"], payload["expected_revision"], turn_id)
+            return self.get(turn_id)
         return self.run(turn_id, text, command, payload, on_event) if fresh else self.get(turn_id)
 
     def run(self, turn_id: str, text: str, command: str = "chat", payload: dict[str, Any] | None = None,
@@ -144,6 +155,8 @@ class TurnService:
                         db.execute("DELETE FROM memories")
                         db.execute("DELETE FROM constraints")
                     self.repo.save_domain(db, planner.goals, planner.items, planner.reviews)
+                    if command == "memory_confirm":
+                        confirm_memory(db, payload["id"], payload["expected_revision"], payload.get("content"), payload.get("scope"), payload.get("value"), business_day, source)
                     self.save_memory(db, memory, source, text, command, payload or {}, business_day)
                     db.executemany("INSERT OR IGNORE INTO artifact_sources VALUES ('turn',?,?)", [(turn_id, sid) for sid in planner.context_source_ids + [source]])
                     db.execute("UPDATE profile SET state_revision=state_revision+1")
@@ -153,18 +166,24 @@ class TurnService:
                 if self.llm is not None and command == "chat":
                     try:
                         chunks = []
-                        reply_context = self.context.build(turn_id, "reply", facts)
+                        reply_context = self.context.build(turn_id, "reply", facts, self.retrieval.search(text))
                         messages = reply_context.messages
                         with transaction(self.repo.path) as db:
                             db.executemany("INSERT OR IGNORE INTO artifact_sources VALUES ('turn',?,?)", [(turn_id, sid) for sid in reply_context.source_ids])
                         for delta in self.llm.stream(messages):
                             if delta.text:
+                                with transaction(self.repo.path, write=False) as db:
+                                    if self.repo.profile(db)["privacy_revision"] != profile["privacy_revision"]:
+                                        chunks = []
+                                        break
                                 chunks.append(delta.text)
                                 emit("delta", {"text": delta.text})
                         reply = "".join(chunks).strip() or facts
                     except Exception:
                         reply, degraded = facts, True
                 with transaction(self.repo.path) as db:
+                    if self.repo.profile(db)["privacy_revision"] != profile["privacy_revision"]:
+                        reply, degraded = "来源已更新或删除，请重新发起这一轮。", True
                     db.execute("UPDATE turns SET status='completed',reply=?,degraded=?,lease_until=0 WHERE id=?", (reply, int(degraded), turn_id))
                     seq = db.execute("SELECT coalesce(max(seq),0)+1 FROM messages WHERE conversation_id=?", (row["conversation_id"],)).fetchone()[0]
                     assistant_id = uid("msg")
@@ -190,6 +209,8 @@ class TurnService:
     def analyze(self, planner: StudyPlanner, text: str, command: str, payload: dict[str, Any], turn_id: str) -> str:
         steps: list[Any] = []
         bundle = planner.memory.recall(text)
+        if command == "memory_confirm":
+            return "记忆已确认或纠正。"
         if command == "goal":
             goal = planner._record_goal(payload["title"], payload.get("deadline", ""), [], steps)
             draft = generate_plan(goal, start=planner.business_day, daily_minutes=payload.get("daily_minutes", 60))
@@ -212,7 +233,7 @@ class TurnService:
             raise ServiceError("INVALID_COMMAND", "未知操作", 422)
         decision = None
         if self.llm:
-            context = self.context.build(turn_id, "decision")
+            context = self.context.build(turn_id, "decision", recalled=self.retrieval.search(text))
             planner.context_source_ids = context.source_ids
             try:
                 decision = self.llm.complete_json(context.messages)

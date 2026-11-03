@@ -49,6 +49,7 @@ def store_candidate(db: sqlite3.Connection, candidate: MemoryCandidate) -> str:
             raise ValueError("预算必须为 15–480 分钟")
         previous = db.execute("SELECT id FROM constraints WHERE key='learning.daily_minutes' AND scope=? AND status='active'", (candidate.scope,)).fetchone()
         if previous:
+            db.execute("UPDATE summaries SET valid=0 WHERE id IN (SELECT a.artifact_id FROM artifact_sources a JOIN memory_sources s ON s.source_id=a.source_id JOIN memories m ON m.id=s.memory_id WHERE m.constraint_id=?)", (previous[0],))
             db.execute("UPDATE constraints SET status='superseded',revision=revision+1 WHERE id=?", (previous[0],))
             db.execute("UPDATE memories SET status='superseded',superseded_by=?,revision=revision+1 WHERE constraint_id=?", (mid, previous[0]))
         constraint_id = uid("c")
@@ -67,7 +68,7 @@ def store_candidate(db: sqlite3.Connection, candidate: MemoryCandidate) -> str:
 
 
 def confirm_memory(db: sqlite3.Connection, memory_id: str, expected_revision: int, content: str | None = None,
-                   scope: str | None = None, value: int | None = None, day: date | None = None) -> str:
+                   scope: str | None = None, value: int | None = None, day: date | None = None, source_id: str | None = None) -> str:
     row = db.execute("SELECT * FROM memories WHERE id=? AND status NOT IN ('deleted','superseded')", (memory_id,)).fetchone()
     if row is None:
         raise ServiceError("NOT_FOUND", "记忆不存在或已失效", 404)
@@ -77,7 +78,8 @@ def confirm_memory(db: sqlite3.Connection, memory_id: str, expected_revision: in
     candidate = budget_candidate(content or row["content"], day or date.today(), uid("confirmation"))
     if row["constraint_id"] and value is None:
         constraint = db.execute("SELECT value,scope FROM constraints WHERE id=?", (row["constraint_id"],)).fetchone()
-        value, scope = constraint["value"], scope or constraint["scope"]
+        value = candidate.value if content and content != row["content"] and candidate else constraint["value"]
+        scope = scope or constraint["scope"]
     if value is not None:
         candidate = MemoryCandidate(f"可学习时间：{value} 分钟", "preference", "active", "fact", uid("confirmation"), content or row["content"], scope or "default", value)
     elif candidate:
@@ -85,8 +87,9 @@ def confirm_memory(db: sqlite3.Connection, memory_id: str, expected_revision: in
         candidate.scope = scope or candidate.scope
     else:
         candidate = MemoryCandidate(content or row["content"], row["category"], "active", "experience", uid("confirmation"), content or row["content"])
+    if source_id:
+        candidate.source_id = source_id
     # 确认是新的独立用户证据，保留原记录用于追溯。
     new_id = store_candidate(db, candidate)
     db.execute("UPDATE memories SET status='superseded',superseded_by=?,revision=revision+1 WHERE id=?", (new_id, memory_id))
-    db.execute("UPDATE profile SET state_revision=state_revision+1")
     return new_id

@@ -21,7 +21,7 @@ class Maintenance:
             db.execute("UPDATE profile SET maintenance_day=?", (day,))
             db.execute("UPDATE memories SET status='expired',revision=revision+1 WHERE status='active' AND effective_to<?", (day,))
             db.execute("UPDATE constraints SET status='expired',revision=revision+1 WHERE status='active' AND effective_to<?", (day,))
-            rows = db.execute("SELECT m.seq,m.content,m.turn_id FROM messages m JOIN turns t ON t.id=m.turn_id WHERE m.conversation_id=? AND m.deleted=0 AND t.status='completed' ORDER BY m.seq DESC LIMIT 128", (conversation_id,)).fetchall()
+            rows = db.execute("SELECT m.seq,m.content,m.turn_id FROM messages m JOIN turns t ON t.id=m.turn_id WHERE m.conversation_id=? AND m.deleted=0 AND t.status='completed' AND NOT EXISTS (SELECT 1 FROM memory_sources s JOIN memories old ON old.id=s.memory_id WHERE s.source_id=m.id AND old.constraint_id IS NOT NULL AND old.status IN ('superseded','expired','deleted')) ORDER BY m.seq DESC LIMIT 128", (conversation_id,)).fetchall()
             turn_ids = list(dict.fromkeys(r["turn_id"] for r in rows))
             if len(turn_ids) <= 4 or count_tokens([{"content": r["content"]} for r in rows]) < 4800:
                 return
@@ -41,7 +41,7 @@ class Maintenance:
         try:
             payload = json.loads(row["payload"])
             with transaction(self.repo.path, write=False) as db:
-                sources = db.execute("SELECT m.* FROM messages m JOIN turns t ON t.id=m.turn_id WHERE m.conversation_id=? AND m.seq<=? AND m.deleted=0 AND t.status='completed' ORDER BY m.seq DESC LIMIT 128", (payload["conversation_id"], payload["end"])).fetchall()
+                sources = db.execute("SELECT m.* FROM messages m JOIN turns t ON t.id=m.turn_id WHERE m.conversation_id=? AND m.seq<=? AND m.deleted=0 AND t.status='completed' AND NOT EXISTS (SELECT 1 FROM memory_sources s JOIN memories old ON old.id=s.memory_id WHERE s.source_id=m.id AND old.constraint_id IS NOT NULL AND old.status IN ('superseded','expired','deleted')) ORDER BY m.seq DESC LIMIT 128", (payload["conversation_id"], payload["end"])).fetchall()
             # 提取式摘要保留原话的首句；不对旧摘要再次改写。
             lines, source_ids = [], []
             for source in sources:

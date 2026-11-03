@@ -10,7 +10,7 @@ import threading
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
@@ -19,6 +19,7 @@ from .llm import build_client_from_env
 from .memory_types import ServiceError
 from .repositories import uid
 from .turn_service import TurnService
+from .db import transaction
 
 DEFAULT_DATA_DIR = Path.home() / '.study-planner'
 DATA_DIR_ENV = 'STUDY_PLANNER_DATA_DIR'
@@ -81,6 +82,13 @@ class GoalRequest(WriteRequest):
     daily_minutes: int = Field(default=60, ge=15, le=480)
 
 
+class MemoryRequest(WriteRequest):
+    expected_revision: int = Field(ge=1)
+    content: str | None = Field(default=None, min_length=1, max_length=1000)
+    scope: str | None = Field(default=None, max_length=30)
+    value: int | None = Field(default=None, ge=15, le=480)
+
+
 def sse(event: str, data: dict[str, Any]) -> str:
     return f'event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n'
 
@@ -100,6 +108,15 @@ def get_turn(turn_id: str) -> dict[str, Any]:
     return session.service.get(turn_id).to_dict()
 
 
+@app.get('/api/requests/{request_id}')
+def request_result(request_id: str) -> dict[str, Any]:
+    with transaction(session.service.repo.path, write=False) as db:
+        row = db.execute('SELECT id FROM turns WHERE request_id=?', (request_id,)).fetchone()
+        if not row:
+            raise ServiceError('NOT_FOUND', '请求尚未被接收，可使用原标识重试', 404)
+    return session.service.get(row[0]).to_dict()
+
+
 @app.post('/api/turns/{turn_id}/cancel')
 def cancel_turn(turn_id: str) -> dict[str, Any]:
     return session.service.cancel(turn_id).to_dict()
@@ -110,6 +127,8 @@ async def chat(body: ChatRequest) -> StreamingResponse:
     service = session.service
     request_id = body.request_id or uid('request')
     turn_id, fresh = service.accept(body.conversation_id, request_id, body.message)
+    with transaction(service.repo.path, write=False) as db:
+        stream_privacy = service.repo.profile(db)['privacy_revision']
     events: queue.Queue[Any] = queue.Queue(maxsize=256)
 
     def emit(event: str, data: dict[str, Any]) -> None:
@@ -144,6 +163,10 @@ async def chat(body: ChatRequest) -> StreamingResponse:
             event, data = await asyncio.to_thread(events.get)
             if event == 'end':
                 break
+            if event in ('step', 'delta', 'reply', 'done'):
+                with transaction(service.repo.path, write=False) as db:
+                    if service.repo.profile(db)['privacy_revision'] != stream_privacy:
+                        continue
             yield sse(event, data)
 
     return StreamingResponse(stream(), media_type='text/event-stream', headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})
@@ -172,3 +195,49 @@ def rollover(body: WriteRequest | None = None) -> dict[str, Any]:
 @app.post('/api/reset')
 def reset(body: WriteRequest | None = None) -> dict[str, Any]:
     return execute('reset', '清空学习档案', body or WriteRequest())
+
+
+@app.get('/api/conversations')
+def conversations() -> list[dict[str, Any]]:
+    with transaction(session.service.repo.path, write=False) as db:
+        return [dict(row) for row in db.execute('SELECT * FROM conversations ORDER BY created_at DESC LIMIT 100')]
+
+
+@app.get('/api/conversations/{conversation_id}/messages')
+def conversation_messages(conversation_id: str, before_seq: int = 9223372036854775807,
+                          limit: int = Query(default=50, ge=1, le=100)) -> dict[str, Any]:
+    with transaction(session.service.repo.path, write=False) as db:
+        rows = db.execute('SELECT id,seq,role,content,created_at,turn_id FROM messages WHERE conversation_id=? AND seq<? AND deleted=0 ORDER BY seq DESC LIMIT ?', (conversation_id, before_seq, limit)).fetchall()
+        return {'messages': [dict(r) for r in reversed(rows)], 'has_more': len(rows) == limit,
+                'privacy_revision': session.service.repo.profile(db)['privacy_revision']}
+
+
+@app.get('/api/memories')
+def memories(status: str | None = None, offset: int = Query(default=0, ge=0),
+             limit: int = Query(default=50, ge=1, le=100)) -> dict[str, Any]:
+    with transaction(session.service.repo.path, write=False) as db:
+        rows = session.service.repo.memories(db, status, offset, limit)
+        return {'items': rows, 'has_more': len(rows) == limit, 'offset': offset,
+                'state_revision': session.service.repo.profile(db)['state_revision']}
+
+
+@app.get('/api/memories/search')
+def search_memories(q: str = Query(max_length=1000)) -> list[dict]:
+    return session.service.retrieval.search(q)
+
+
+@app.get('/api/memories/{memory_id}/deletion-preview')
+def deletion_preview(memory_id: str) -> dict[str, Any]:
+    return session.service.deletion.preview(memory_id)
+
+
+@app.patch('/api/memories/{memory_id}')
+def correct_memory(memory_id: str, body: MemoryRequest) -> dict[str, Any]:
+    payload = body.model_dump(exclude={'request_id'}, exclude_none=True)
+    payload['id'] = memory_id
+    return execute('memory_confirm', '确认或纠正学习记忆', body, payload)
+
+
+@app.delete('/api/memories/{memory_id}')
+def delete_memory(memory_id: str, body: MemoryRequest) -> dict[str, Any]:
+    return execute('memory_delete', '清除所选学习记忆', body, {'id': memory_id, 'expected_revision': body.expected_revision})

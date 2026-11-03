@@ -71,6 +71,8 @@ def migrate(source: Path, target: Path, dry_run: bool = True) -> dict[str, Any]:
     if dry_run:
         return {**report, "batch": batch, "dry_run": True}
     repo = Repository(target)
+    from .deletion import DeletionService
+    DeletionService(repo).initialize()
     # 保留逐字节快照，恢复时不依赖已做容错解析的数据。
     backup = target / f"legacy-{batch[:12]}"
     backup.mkdir(mode=0o700, exist_ok=True)

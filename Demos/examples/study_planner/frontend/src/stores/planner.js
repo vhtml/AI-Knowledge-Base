@@ -1,331 +1,167 @@
-/**
- * 工作台的状态中枢（Pinia）。
- *
- * 这个 store 要回答的核心问题是：**哪些状态归服务端，哪些归前端**。
- *
- * 归服务端（后端是唯一真相）：
- *   goals / items / reviews / memory
- *   这些数据在后端有持久化，前端只做镜像。任何改动都要走接口，
- *   拿到新快照后整体替换——不做局部合并，避免两边不一致。
- *
- * 归前端（只存在于这个页面）：
- *   messages / streaming / error
- *   对话记录和流式过程不需要落盘，刷新页面重来即可。
- *
- * 三处容易写错的地方，这里专门处理了：
- *
- * 1. **乐观更新要能回滚**
- *    勾选待办时先改本地再发请求，但失败时必须把状态改回去——
- *    否则界面显示"已完成"、实际没完成，用户再点一次就点不动了。
- *
- * 2. **流式请求可能乱序返回**
- *    快速连发两条消息时，先发的请求可能后到。用请求序号
- *    丢弃过期响应，避免旧回复覆盖新回复。
- *
- * 3. **状态整体替换而不是合并**
- *    后端推来的 state 是全量快照，直接替换。
- *    局部合并（只更新 items 保留 goals）在后端同时改了多个集合时
- *    会留下脏数据。
- */
-
+/** 服务端为唯一真相；用持久请求标识恢复断线操作。 */
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
-import {
-  createGoal as apiCreateGoal,
-  fetchState,
-  resetAll as apiResetAll,
-  rollover as apiRollover,
-  streamChat,
-  toggleTask as apiToggleTask,
-} from '../api'
+import { apiJSON, createGoal as apiCreateGoal, fetchState, rollover as apiRollover, resetAll as apiResetAll, streamChat, toggleTask as apiToggleTask } from '../api'
 
-let seq = 0
-const uid = () => `m${++seq}-${Date.now().toString(36)}`
+const pendingKey = 'study-planner-pending'
+const conversationKey = 'study-planner-conversation'
+const clock = (value) => new Date(value ?? Date.now()).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
 
 export const usePlannerStore = defineStore('planner', () => {
-  // ----------------------------------------------------------
-  // 服务端镜像
-  // ----------------------------------------------------------
-
-  const goals = ref([])
-  const items = ref([])
-  const reviews = ref([])
+  const goals = ref([]), items = ref([]), reviews = ref([])
   const memory = ref({ stats: {}, short: [], long: [] })
+  const messages = ref([]), streaming = ref(false), liveSteps = ref([]), liveStatus = ref(''), liveText = ref('')
+  const error = ref(''), failedMessage = ref(''), ready = ref(false)
+  const conversationId = ref(localStorage.getItem(conversationKey) || 'default')
+  const revision = ref(-1), memoryHasMore = ref(false), historyHasMore = ref(false)
+  let controller = null, activeTurn = '', generation = 0
+  let pending = null
+  try { pending = JSON.parse(localStorage.getItem(pendingKey)) } catch { localStorage.removeItem(pendingKey) }
 
-  // ----------------------------------------------------------
-  // 前端本地状态
-  // ----------------------------------------------------------
-
-  const messages = ref([])
-  /** 流式状态：idle / streaming */
-  const streaming = ref(false)
-  /** 当前这一轮收到的留痕步骤 */
-  const liveSteps = ref([])
-  /** 当前这一轮的阶段提示 */
-  const liveStatus = ref('')
-  /** 当前这一轮模型回复的正文（逐段累积，流式显示用） */
-  const liveText = ref('')
-  const error = ref('')
-  /** 最近一次失败的消息，供"重试"按钮使用 */
-  const failedMessage = ref('')
-  /** 已加载过一次快照，用来区分"首次加载"和"已就绪" */
-  const ready = ref(false)
-
-  let controller = null
-  let requestId = 0
-
-  // ----------------------------------------------------------
-  // 派生状态：全部用 computed，不在 state 里存冗余副本
-  // ----------------------------------------------------------
-
-  const today = computed(() => {
-    const day = new Date().toLocaleDateString('sv-SE')
-    return items.value.filter((item) => item.day === day)
-  })
-
-  const todayPending = computed(() => today.value.filter((item) => !item.done))
-
-  const activeGoals = computed(() => goals.value.filter((goal) => goal.status === 'active'))
-
-  /** 整体进度：已完成条数 / 总条数 */
-  const progress = computed(() => {
-    const total = items.value.length
-    const done = items.value.filter((item) => item.done).length
-    return { done, total, ratio: total ? done / total : 0 }
-  })
-
-  /** 长期记忆：有效条目与被取代的旧说法分开 */
-  const longTermActive = computed(() => memory.value.long.filter((item) => !item.superseded))
-  const longTermSuperseded = computed(() => memory.value.long.filter((item) => item.superseded))
-
-  /** 短期工作区里的摘要条目——它是折叠出来的，不是普通笔记 */
-  const shortTermSummary = computed(() =>
-    memory.value.short.filter((item) => item.category === 'summary'),
-  )
-
+  const today = computed(() => items.value.filter((i) => i.day === new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' })))
+  const todayPending = computed(() => today.value.filter((i) => !i.done))
+  const activeGoals = computed(() => goals.value.filter((i) => i.status === 'active'))
+  const progress = computed(() => ({ done: items.value.filter((i) => i.done).length, total: items.value.length }))
+  const longTermActive = computed(() => memory.value.long.filter((i) => !['superseded', 'deleted', 'expired'].includes(i.status)))
+  const longTermSuperseded = computed(() => memory.value.long.filter((i) => i.status === 'superseded'))
+  const shortTermSummary = computed(() => memory.value.short.filter((i) => i.category === 'summary'))
   const memoryStats = computed(() => memory.value.stats ?? {})
-
-  /** 有没有已排的任务——决定"今日"面板显示什么 */
   const hasPlan = computed(() => items.value.length > 0)
 
-  // ----------------------------------------------------------
-  // 动作
-  // ----------------------------------------------------------
-
-  /**
-   * 用后端快照整体替换本地镜像。
-   * @param {object} snapshot 后端返回的状态
-   */
   function applySnapshot(snapshot) {
-    if (!snapshot) return
-    goals.value = snapshot.goals ?? []
-    items.value = snapshot.items ?? []
-    reviews.value = snapshot.reviews ?? []
+    if (!snapshot || (snapshot.state_revision ?? 0) < revision.value) return
+    revision.value = snapshot.state_revision ?? 0
+    goals.value = snapshot.goals ?? []; items.value = snapshot.items ?? []; reviews.value = snapshot.reviews ?? []
     memory.value = snapshot.memory ?? { stats: {}, short: [], long: [] }
+    memoryHasMore.value = memory.value.has_more ?? false
     ready.value = true
   }
 
-  /** 拉取全量状态。 */
+  function savePending(value) {
+    pending = value
+    if (value) localStorage.setItem(pendingKey, JSON.stringify(value))
+    else localStorage.removeItem(pendingKey)
+  }
+
+  async function loadHistory(older = false) {
+    const before = older && messages.value.length ? `&before_seq=${messages.value[0].seq}` : ''
+    const data = await apiJSON(`/api/conversations/${encodeURIComponent(conversationId.value)}/messages?limit=50${before}`)
+    const rows = data.messages.map((m) => ({ ...m, time: clock(m.created_at) }))
+    messages.value = older ? [...rows, ...messages.value] : rows
+    historyHasMore.value = data.has_more
+  }
+
   async function loadState() {
     try {
-      applySnapshot(await fetchState())
+      applySnapshot(await fetchState(conversationId.value))
+      await loadHistory()
       error.value = ''
-    } catch (err) {
-      error.value = err?.message ?? '加载状态失败'
+      if (pending && !streaming.value) await recoverPending()
+    } catch (err) { error.value = err.message ?? '加载失败' }
+  }
+
+  async function recoverPending() {
+    if (!pending) return
+    const result = activeTurn
+      ? await apiJSON(`/api/turns/${encodeURIComponent(activeTurn)}`)
+      : await apiJSON(`/api/requests/${encodeURIComponent(pending.request_id)}`)
+    if (['completed', 'cancelled', 'failed'].includes(result.status)) {
+      if (result.status === 'failed') { failedMessage.value = pending.message; error.value = result.error_code || '处理失败' }
+      savePending(null)
+      applySnapshot(await fetchState(conversationId.value))
+      await loadHistory()
+    } else {
+      activeTurn = result.turn_id
+      error.value = '操作仍在处理中，可稍后查询结果；重复发送同一条会继续查询。'
     }
   }
 
-  /**
-   * 发一条消息，走 SSE。
-   *
-   * @param {string} text 用户输入
-   */
   async function send(text) {
     const content = text.trim()
     if (!content || streaming.value) return
-
-    error.value = ''
-    failedMessage.value = ''
-    messages.value.push({ id: uid(), role: 'user', content, time: clock() })
-
-    const mine = ++requestId
-    controller = new AbortController()
-    streaming.value = true
-    liveSteps.value = []
-    liveStatus.value = ''
-    liveText.value = ''
-
+    if (pending && pending.message !== content) {
+      await recoverPending()
+      if (pending) return
+    }
+    error.value = ''; failedMessage.value = ''
+    if (!pending) savePending({ message: content, request_id: crypto.randomUUID(), conversation_id: conversationId.value })
+    if (!messages.value.some((m) => m.id === pending.request_id)) messages.value.push({ id: pending.request_id, role: 'user', content, time: clock() })
+    const mine = ++generation
+    activeTurn = ''; controller = new AbortController(); streaming.value = true
+    liveSteps.value = []; liveText.value = ''; liveStatus.value = ''
     try {
-      await streamChat(
-        content,
-        (frame) => {
-          // 过期响应直接丢弃：先发的请求可能后到，不能让它覆盖新回复
-          if (mine !== requestId) return
-
-          if (frame.event === 'status') {
-            liveStatus.value = frame.data.text ?? ''
-          } else if (frame.event === 'step') {
-            liveSteps.value.push(frame.data)
-          } else if (frame.event === 'delta') {
-            // 模型回复的文本增量：先累积到 liveText 里流式显示，
-            // 最终消息以 reply 事件为准（那是完整正文，权威版本）
-            liveText.value += frame.data.text ?? ''
-          } else if (frame.event === 'reply') {
-            messages.value.push({
-              id: uid(),
-              role: 'assistant',
-              content: frame.data.text ?? '',
-              steps: liveSteps.value.slice(),
-              time: clock(),
-            })
-          } else if (frame.event === 'state') {
-            applySnapshot(frame.data)
-          } else if (frame.event === 'error') {
-            error.value = frame.data.message ?? '处理失败'
-          }
-        },
-        controller.signal,
-      )
+      await streamChat(content, (frame) => {
+        if (mine !== generation) return
+        if (frame.event === 'operation') activeTurn = frame.data.turn_id
+        else if (frame.event === 'status') liveStatus.value = frame.data.text ?? ''
+        else if (frame.event === 'step') liveSteps.value.push(frame.data)
+        else if (frame.event === 'delta') liveText.value += frame.data.text ?? ''
+        else if (frame.event === 'state') applySnapshot(frame.data)
+        else if (frame.event === 'done') {
+          if (['completed', 'failed', 'cancelled'].includes(frame.data.status)) savePending(null)
+          if (frame.data.status === 'failed') error.value = frame.data.error_code
+        } else if (frame.event === 'error') error.value = frame.data.message ?? '处理失败'
+      }, controller.signal, pending)
+      if (pending) await recoverPending()
     } catch (err) {
-      if (err?.name === 'AbortError') {
-        // 用户主动中断，不算错误
-      } else {
-        error.value = err?.message ?? '未知错误'
-        failedMessage.value = content
-      }
+      if (err.name !== 'AbortError') { error.value = err.message ?? '处理失败'; failedMessage.value = content }
     } finally {
-      if (mine === requestId) {
-        streaming.value = false
-        liveSteps.value = []
-        liveStatus.value = ''
-        liveText.value = ''
-        controller = null
+      if (mine === generation) {
+        streaming.value = false; liveText.value = ''; liveStatus.value = ''; controller = null
+        try { await loadHistory() } catch { /* 待网络恢复后重新加载 */ }
       }
     }
   }
 
-  /** 中断当前流式请求。 */
-  function stop() {
-    controller?.abort()
-    requestId += 1
-    streaming.value = false
-    liveSteps.value = []
-    liveStatus.value = ''
-    liveText.value = ''
-  }
-
-  /**
-   * 切换待办完成状态——乐观更新 + 失败回滚。
-   *
-   * @param {string} taskId 任务 id
-   */
-  async function toggleTask(taskId) {
-    const target = items.value.find((item) => item.id === taskId)
-    if (!target) return
-
-    const previous = target.done
-    target.done = !previous // 乐观：先翻转，界面立刻响应
-
+  async function stop() {
     try {
-      applySnapshot(await apiToggleTask(taskId, target.done))
-      error.value = ''
-    } catch (err) {
-      target.done = previous // 回滚：不回滚的话界面会和服务端不一致
-      error.value = err?.message ?? '更新失败'
-    }
+      if (!activeTurn && pending) activeTurn = (await apiJSON(`/api/requests/${encodeURIComponent(pending.request_id)}`)).turn_id
+      if (activeTurn) {
+        const result = await apiJSON(`/api/turns/${encodeURIComponent(activeTurn)}/cancel`, 'POST')
+        error.value = result.status === 'cancelled' ? '已在提交前取消' : '变更已保存，停止接收回复不会撤销操作'
+      }
+    } catch (err) { error.value = err.message }
+    controller?.abort(); generation += 1; streaming.value = false; liveText.value = ''
+    if (pending) { try { await recoverPending() } catch { /* 保留请求标识供恢复 */ } }
   }
 
-  /**
-   * 创建目标并排计划。
-   *
-   * @param {{title: string, deadline?: string, daily_minutes?: number}} payload 目标参数
-   */
-  async function createGoal(payload) {
-    try {
-      applySnapshot(await apiCreateGoal(payload))
-      error.value = ''
-      return true
-    } catch (err) {
-      error.value = err?.message ?? '创建目标失败'
-      return false
-    }
+  async function change(action) {
+    try { applySnapshot(await action()); error.value = ''; return true }
+    catch (err) { error.value = err.message; return false }
   }
-
-  /** 模拟跨天。 */
-  async function rollover() {
-    try {
-      applySnapshot(await apiRollover())
-      error.value = ''
-    } catch (err) {
-      error.value = err?.message ?? '跨天失败'
-    }
+  async function toggleTask(id) {
+    const target = items.value.find((i) => i.id === id)
+    if (target) return change(() => apiToggleTask(id, !target.done))
   }
-
-  /** 清空全部数据。 */
-  async function resetAll() {
-    try {
-      applySnapshot(await apiResetAll())
-      messages.value = []
-      error.value = ''
-    } catch (err) {
-      error.value = err?.message ?? '重置失败'
-    }
-  }
-
-  /** 重试上一条失败的消息。 */
-  function retry() {
-    const text = failedMessage.value
-    if (!text) return
-    failedMessage.value = ''
-    send(text)
-  }
-
-  /** 清空本地对话记录（不动服务端数据）。 */
+  const createGoal = (payload) => change(() => apiCreateGoal(payload))
+  const rollover = () => change(apiRollover)
+  async function resetAll() { if (await change(apiResetAll)) { savePending(null); await loadHistory() } }
+  function retry() { if (failedMessage.value) return send(failedMessage.value) }
   function clearChat() {
-    messages.value = []
-    failedMessage.value = ''
-    error.value = ''
+    if (streaming.value || pending) { error.value = '请先停止或确认当前操作结果'; return }
+    conversationId.value = crypto.randomUUID(); localStorage.setItem(conversationKey, conversationId.value)
+    messages.value = []; historyHasMore.value = false; error.value = ''
   }
-
-  return {
-    // 服务端镜像
-    goals,
-    items,
-    reviews,
-    memory,
-    // 前端本地
-    messages,
-    streaming,
-    liveSteps,
-    liveStatus,
-    liveText,
-    error,
-    failedMessage,
-    ready,
-    // 派生
-    today,
-    todayPending,
-    activeGoals,
-    progress,
-    longTermActive,
-    longTermSuperseded,
-    shortTermSummary,
-    memoryStats,
-    hasPlan,
-    // 动作
-    loadState,
-    send,
-    stop,
-    toggleTask,
-    createGoal,
-    rollover,
-    resetAll,
-    retry,
-    clearChat,
+  async function loadMoreMemories() {
+    try {
+      const data = await apiJSON(`/api/memories?offset=${memory.value.long.length}`)
+      if (data.state_revision !== revision.value) { await loadState(); return }
+      memory.value.long.push(...data.items); memoryHasMore.value = data.has_more
+    } catch (err) { error.value = err.message }
   }
+  async function updateMemory(item, changes = {}) {
+    const ok = await change(() => apiJSON(`/api/memories/${encodeURIComponent(item.id)}`, 'PATCH', { expected_revision: item.revision, request_id: crypto.randomUUID(), ...changes }))
+    if (ok) await loadHistory()
+    return ok
+  }
+  async function previewDeletion(item) { return apiJSON(`/api/memories/${encodeURIComponent(item.id)}/deletion-preview`) }
+  async function deleteMemory(item) {
+    const ok = await change(() => apiJSON(`/api/memories/${encodeURIComponent(item.id)}`, 'DELETE', { expected_revision: item.revision, request_id: crypto.randomUUID() }))
+    if (ok) await loadHistory()
+    return ok
+  }
+  return { goals, items, reviews, memory, messages, streaming, liveSteps, liveStatus, liveText, error, failedMessage, ready,
+    today, todayPending, activeGoals, progress, longTermActive, longTermSuperseded, shortTermSummary, memoryStats, hasPlan,
+    memoryHasMore, historyHasMore, loadState, send, stop, toggleTask, createGoal, rollover, resetAll, retry, clearChat,
+    loadMoreMemories, loadHistory, updateMemory, previewDeletion, deleteMemory, recoverPending }
 })
-
-/** 当前时间，秒级。 */
-function clock() {
-  return new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
-}

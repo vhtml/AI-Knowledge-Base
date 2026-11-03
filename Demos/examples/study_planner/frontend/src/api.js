@@ -63,8 +63,8 @@ async function request(url, options) {
  * 拉取全量状态快照。
  * @returns {Promise<object>} 后端的状态对象
  */
-export async function fetchState() {
-  const res = await request(`${API_BASE}/api/state`)
+export async function fetchState(conversationId = "default") {
+  const res = await request(`${API_BASE}/api/state?conversation_id=${encodeURIComponent(conversationId)}`)
   return res.json()
 }
 
@@ -78,7 +78,7 @@ export async function toggleTask(taskId, done) {
   const res = await request(`${API_BASE}/api/tasks/${encodeURIComponent(taskId)}/toggle`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ done }),
+    body: JSON.stringify({ done, request_id: crypto.randomUUID() }),
   })
   return res.json()
 }
@@ -92,7 +92,7 @@ export async function createGoal(payload) {
   const res = await request(`${API_BASE}/api/goals`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ request_id: crypto.randomUUID(), ...payload }),
   })
   return res.json()
 }
@@ -102,7 +102,7 @@ export async function createGoal(payload) {
  * @returns {Promise<object>} 更新后的状态快照
  */
 export async function rollover() {
-  const res = await request(`${API_BASE}/api/rollover`, { method: 'POST' })
+  const res = await request(`${API_BASE}/api/rollover`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ request_id: crypto.randomUUID() }) })
   return res.json()
 }
 
@@ -111,7 +111,7 @@ export async function rollover() {
  * @returns {Promise<object>} 更新后的状态快照
  */
 export async function resetAll() {
-  const res = await request(`${API_BASE}/api/reset`, { method: 'POST' })
+  const res = await request(`${API_BASE}/api/reset`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ request_id: crypto.randomUUID() }) })
   return res.json()
 }
 
@@ -171,13 +171,13 @@ export function parseSSE(buffer) {
  * @param {AbortSignal} [signal] 中止信号
  * @returns {Promise<void>} 流结束时 resolve
  */
-export async function streamChat(message, onFrame, signal) {
+export async function streamChat(message, onFrame, signal, metadata = {}) {
   let res
   try {
     res = await fetch(`${API_BASE}/api/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message }),
+      body: JSON.stringify({ message, ...metadata }),
       signal,
     })
   } catch (err) {
@@ -212,4 +212,14 @@ export async function streamChat(message, onFrame, signal) {
 
     for (const frame of frames) onFrame(frame)
   }
+}
+
+
+export async function apiJSON(path, method = 'GET', body) {
+  const res = await request(`${API_BASE}${path}`, {
+    method,
+    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  })
+  return res.json()
 }

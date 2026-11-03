@@ -19,7 +19,7 @@ onMounted(() => {
         <span class="wb-logo" aria-hidden="true">学</span>
         <div class="wb-titles">
           <h1>学习规划师工作台</h1>
-          <p>短期记忆 + 长期记忆 · <code>POST /api/chat</code> (SSE)</p>
+          <p>会话记忆 · 长期学习档案</p>
         </div>
       </div>
 
@@ -31,10 +31,10 @@ onMounted(() => {
         <button
           type="button"
           class="btn-ghost"
-          title="模拟跨天：清空短期工作区，值得沉淀的进长期档案"
+          title="整理当前业务日，保留会话原文"
           @click="store.rollover()"
         >
-          模拟跨天
+          整理记忆
         </button>
         <button
           type="button"
@@ -42,7 +42,7 @@ onMounted(() => {
           :disabled="!store.messages.length"
           @click="store.clearChat()"
         >
-          清空对话
+          新对话
         </button>
       </div>
     </header>
