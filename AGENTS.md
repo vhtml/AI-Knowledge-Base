@@ -17,7 +17,6 @@
 Python 用 `uv` 管理依赖（Python 3.13），前端用 `npm`。
 
 - 安装依赖：`cd Demos && uv sync`
-- 离线跑示例（不联网、不消耗 token）：`cd Demos/examples && uv run --project .. python -m chat_cli --mock`
 - 自检：`cd Demos/examples && uv run --project .. python -m chat_cli.selftest`
 - 启动后端：`cd Demos && uv run uvicorn examples.rag-demo.backend.main:app --reload --port 8000`
 - 启动前端：`cd Demos/examples/rag-demo/frontend && npm install && npm run dev`（http://localhost:5173）
@@ -29,7 +28,6 @@ Python 用 `uv` 管理依赖（Python 3.13），前端用 `npm`。
 - Python：`from __future__ import annotations`；内置泛型写法（`list[dict]`、`dict[str, str]`）；数据模型用 `@dataclass`
 - 模块顶部写中文 docstring，说明"这个模块解决什么问题"，不是复述函数名
 - 公开函数必须标注参数与返回类型；注释写"为什么"，不写"做了什么"
-- 示例要能独立跑通：给离线降级路径（如 `--mock`），别让读者必须配好 API Key 才能看到效果
 - 前端：Vue 3 `<script setup>` + Vite；接口基地址统一读 `import.meta.env.VITE_API_BASE`
 - 仓库目前没有 lint / formatter 配置，新代码沿用邻近文件的风格；确需引入时用 `uv add --dev` / `npm i -D` 并提交锁文件
 
