@@ -102,7 +102,7 @@ uv run --project .. python -m study_planner.backend.eval_memory
 uv run --project .. python -m study_planner.backend.benchmark_memory
 ```
 
-前端运行 `npm run test:store` 和 `npm run build`。store 自检使用真实 Vue/Pinia 与可控 HTTP 响应，验证 404 重试和删除后的历史响应乱序。
+前端运行 `npm run test:store`、`npm run test:clipboard` 和 `npm run build`。复制自检覆盖现代接口成功、接口缺失、权限拒绝、传统复制失败及焦点/选区恢复。store 自检使用真实 Vue/Pinia 与可控 HTTP 响应，验证 404 重试和删除后的历史响应乱序。
 
 本次合成规模实测（Darwin arm64 / Python 3.13.2 / SQLite 3.47.1 / DELETE journal / 词片索引）：1 万条活跃经验、100001 条消息、5 并发、50 次样本，检索＋上下文构建冷启动 71.59ms、p50 74.17ms、p95 110.74ms；该数据集快照恢复 679.89ms。结果不包含模型与网络，不代表其他机器或真实语料上的 SLA。
 

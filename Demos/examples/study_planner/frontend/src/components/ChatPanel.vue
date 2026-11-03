@@ -2,6 +2,7 @@
 <script setup>
 import { computed, nextTick, ref, watch } from 'vue'
 import { usePlannerStore } from '../stores/planner'
+import { copyText } from '../clipboard'
 
 const store = usePlannerStore()
 
@@ -18,11 +19,26 @@ const composerRef = ref(null)
 
 const canSend = computed(() => input.value.trim().length > 0 && !store.streaming)
 
-async function copyMessage(content) {
+const copiedMessageId = ref('')
+const copyErrorId = ref('')
+
+async function copyMessage(message, event) {
+  // currentTarget 只在同步事件处理期间可用，异步拒绝后仍需定位原文。
+  const paragraph = event.currentTarget?.closest('.bubble')?.querySelector('.bubble-text')
+  copiedMessageId.value = ''
+  copyErrorId.value = ''
   try {
-    await navigator.clipboard.writeText(content)
+    await copyText(message.content)
+    copiedMessageId.value = message.id
   } catch {
-    store.error = '复制失败，请选择文本手动复制'
+    copyErrorId.value = message.id
+    if (paragraph) {
+      const range = document.createRange()
+      range.selectNodeContents(paragraph)
+      const selection = window.getSelection()
+      selection?.removeAllRanges()
+      selection?.addRange(range)
+    }
   }
 }
 
@@ -117,10 +133,11 @@ watch(
               <button
                 type="button"
                 class="link-btn"
-                @click="copyMessage(msg.content)"
+                @click="copyMessage(msg, $event)"
               >
-                复制
+                {{ copiedMessageId === msg.id ? '已复制' : '复制' }}
               </button>
+              <span v-if="copyErrorId === msg.id" role="status">浏览器限制自动复制，请选择回复文本并按 Ctrl+C（Mac：⌘C）</span>
             </div>
           </div>
         </div>
