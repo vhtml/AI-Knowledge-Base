@@ -59,6 +59,29 @@ os._exit(9)
             with transaction(self.path, write=False) as db:
                 self.assertEqual(db.execute("SELECT count(*) FROM goals").fetchone()[0], int(commit))
 
+    def test_import_validation_and_idempotency(self) -> None:
+        import json
+        from .migrate_data import migrate
+        source = Path(self.temp.name) / "legacy"
+        source.mkdir()
+        (source / "goals.json").write_text(json.dumps([{"id": "g", "title": "Python"}]))
+        (source / "memory.json").write_text(json.dumps({"long": [{"id": "m", "content": "每天30分钟"}]}))
+        target = Path(self.temp.name) / "imported"
+        self.assertEqual(migrate(source, target)["memories"], 1)
+        self.assertFalse(target.exists())
+        before = (source / "memory.json").read_bytes()
+        self.assertTrue(migrate(source, target, False)["pending_budget"])
+        self.assertTrue(migrate(source, target, False)["already_imported"])
+        self.assertEqual(before, (source / "memory.json").read_bytes())
+        with transaction(target / "planner.db", write=False) as db:
+            self.assertEqual(db.execute("SELECT status FROM memories").fetchone()[0], "pending")
+        (source / "plans.json").write_text('[{"id":"p","goal_id":"missing","day":"2026-11-04"}]')
+        with self.assertRaises(ValueError):
+            migrate(source, target)
+        (source / "memory.json").write_text("{broken")
+        with self.assertRaises(ValueError):
+            migrate(source, target)
+
 
 if __name__ == "__main__":
     unittest.main()
