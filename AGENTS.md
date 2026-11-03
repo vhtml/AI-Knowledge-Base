@@ -21,7 +21,7 @@ Python 用 `uv` 管理依赖（Python 3.13），前端用 `npm`。
 - 自检：`cd Demos/examples && uv run --project .. python -m chat_cli.selftest`
 - 启动后端：`cd Demos && uv run uvicorn examples.rag-demo.backend.main:app --reload --port 8000`
 - 启动学习规划师后端：`cd Demos && uv run uvicorn examples.study_planner.backend.main:app --reload --port 8000`
-- 学习规划师命令行：`cd Demos/examples && uv run --project .. python -m study_planner.backend`
+- 学习规划师命令行：`cd Demos/examples && uv run --project .. python -m study_planner.backend`（固定规则模式，不联网）
 - 启动前端：`cd Demos/examples/rag-demo/frontend && npm install && npm run dev`（http://localhost:5173）
 - 启动学习规划师前端：`cd Demos/examples/study_planner/frontend && npm install && npm run dev`（http://localhost:5173）
 - 前端构建：`npm run build`（产物在 `dist/`，不提交）
@@ -54,5 +54,6 @@ Python 用 `uv` 管理依赖（Python 3.13），前端用 `npm`。
 
 - 密钥只写进 `Demos/.env`（已在 `.gitignore` 中），提交的是 `.env.example`
 - 后端统一读 `LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL`（OpenAI 兼容接口），用 `python-dotenv` 的 `load_dotenv()` 加载
+- `study_planner` 后端按 `LLM_API_KEY` 是否存在自动切换：有 key 走模型模式（模型出结构化决策 → 代码执行 → 模型流式回复），没 key 或模型调不通退回规则模式；`GET /health` 返回 `mode: model | rule`
 - 前端用 `VITE_API_BASE` 指向后端，默认 `http://localhost:8000`
 - 不要提交 `.env`、`.venv/`、`node_modules/`、`dist/`、`.DS_Store`、运行日志（`logs/` 与 `*.log` 已在 `.gitignore` 中）

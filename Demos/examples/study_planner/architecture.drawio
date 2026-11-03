@@ -1,6 +1,6 @@
 <mxfile host="app.diagrams.net" agent="study-planner-arch">
   <diagram id="study-planner-arch" name="study_planner 架构">
-    <mxGraphModel dx="1600" dy="1200" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1620" pageHeight="1220" math="0" shadow="0">
+    <mxGraphModel dx="1600" dy="1200" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1780" pageHeight="1480" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
@@ -8,79 +8,99 @@
         <mxCell id="L1" value="前端层 · frontend/src（Vue 3 + Vite + Pinia）" style="swimlane;startSize=32;horizontal=1;html=0;convertToSvg=1;svgWhiteSpace=wrap;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;fontSize=13;fontColor=#333333;rounded=1;arcSize=6;" vertex="1" parent="1">
           <mxGeometry x="80" y="20" width="1100" height="130" as="geometry" />
         </mxCell>
-        <mxCell id="c_api" value="api.js&#10;API 客户端 + SSE 帧解析&#10;fetch + ReadableStream 自切帧" style="rounded=1;arcSize=10;whiteSpace=wrap;html=0;convertToSvg=1;svgWhiteSpace=wrap;fillColor=#ffffff;strokeColor=#82b366;fontSize=12;fontColor=#333333;" vertex="1" parent="L1">
+        <mxCell id="c_api" value="api.js&#10;API 客户端 + SSE 帧解析&#10;fetch + ReadableStream 自切帧&#10;delta 事件累积成 liveText" style="rounded=1;arcSize=10;whiteSpace=wrap;html=0;convertToSvg=1;svgWhiteSpace=wrap;fillColor=#ffffff;strokeColor=#82b366;fontSize=12;fontColor=#333333;" vertex="1" parent="L1">
           <mxGeometry x="20" y="48" width="290" height="68" as="geometry" />
         </mxCell>
-        <mxCell id="c_store" value="stores/planner.js · Pinia 状态中枢&#10;服务端镜像整体替换 · 乐观更新回滚 · 序号防乱序" style="rounded=1;arcSize=10;whiteSpace=wrap;html=0;convertToSvg=1;svgWhiteSpace=wrap;fillColor=#ffffff;strokeColor=#82b366;fontSize=12;fontColor=#333333;" vertex="1" parent="L1">
+        <mxCell id="c_store" value="stores/planner.js · Pinia 状态中枢&#10;服务端镜像整体替换 · 乐观更新回滚 · 序号防乱序&#10;liveText 逐字累积，reply 落地后清空" style="rounded=1;arcSize=10;whiteSpace=wrap;html=0;convertToSvg=1;svgWhiteSpace=wrap;fillColor=#ffffff;strokeColor=#82b366;fontSize=12;fontColor=#333333;" vertex="1" parent="L1">
           <mxGeometry x="370" y="48" width="330" height="68" as="geometry" />
         </mxCell>
-        <mxCell id="c_ui" value="ChatPanel.vue + SidePanel.vue&#10;对话区与留痕轨迹 · 今日 / 目标 / 记忆面板" style="rounded=1;arcSize=10;whiteSpace=wrap;html=0;convertToSvg=1;svgWhiteSpace=wrap;fillColor=#ffffff;strokeColor=#82b366;fontSize=12;fontColor=#333333;" vertex="1" parent="L1">
+        <mxCell id="c_ui" value="ChatPanel.vue + SidePanel.vue&#10;对话区与留痕轨迹 · 今日 / 目标 / 记忆面板&#10;流式期间正文带闪烁光标（bubble--live）" style="rounded=1;arcSize=10;whiteSpace=wrap;html=0;convertToSvg=1;svgWhiteSpace=wrap;fillColor=#ffffff;strokeColor=#82b366;fontSize=12;fontColor=#333333;" vertex="1" parent="L1">
           <mxGeometry x="760" y="48" width="340" height="68" as="geometry" />
         </mxCell>
 
         <mxCell id="L2" value="服务层 · backend/main.py（FastAPI + SSE）" style="swimlane;startSize=32;horizontal=1;html=0;convertToSvg=1;svgWhiteSpace=wrap;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;fontSize=13;fontColor=#333333;rounded=1;arcSize=6;" vertex="1" parent="1">
           <mxGeometry x="80" y="200" width="1100" height="130" as="geometry" />
         </mxCell>
-        <mxCell id="c_iface" value="接口层&#10;POST /api/chat → SSE 流式对话&#10;GET /api/state 等 → REST 状态快照" style="rounded=1;arcSize=10;whiteSpace=wrap;html=0;convertToSvg=1;svgWhiteSpace=wrap;fillColor=#ffffff;strokeColor=#6c8ebf;fontSize=12;fontColor=#333333;" vertex="1" parent="L2">
+        <mxCell id="c_iface" value="接口层&#10;POST /api/chat → SSE 流式对话（status / step / delta / reply / state）&#10;GET /api/state 等 → REST 状态快照" style="rounded=1;arcSize=10;whiteSpace=wrap;html=0;convertToSvg=1;svgWhiteSpace=wrap;fillColor=#ffffff;strokeColor=#6c8ebf;fontSize=12;fontColor=#333333;" vertex="1" parent="L2">
           <mxGeometry x="20" y="48" width="460" height="68" as="geometry" />
         </mxCell>
-        <mxCell id="c_worker" value="工作线程 + 队列&#10;Agent 是同步的，不能阻塞事件循环&#10;SessionStore：会话状态全局一份，写操作串行化" style="rounded=1;arcSize=10;whiteSpace=wrap;html=0;convertToSvg=1;svgWhiteSpace=wrap;fillColor=#ffffff;strokeColor=#6c8ebf;fontSize=12;fontColor=#333333;" vertex="1" parent="L2">
+        <mxCell id="c_worker" value="工作线程 + 队列&#10;Agent 是同步的，不能阻塞事件循环&#10;SessionStore：会话状态全局一份，写操作串行化&#10;LLMClient 由环境变量装配；没有 key 就走规则模式" style="rounded=1;arcSize=10;whiteSpace=wrap;html=0;convertToSvg=1;svgWhiteSpace=wrap;fillColor=#ffffff;strokeColor=#6c8ebf;fontSize=12;fontColor=#333333;" vertex="1" parent="L2">
           <mxGeometry x="510" y="48" width="570" height="68" as="geometry" />
         </mxCell>
 
-        <mxCell id="L3" value="编排与领域层 · backend/agent.py / planner.py / review.py" style="swimlane;startSize=32;horizontal=1;html=0;convertToSvg=1;svgWhiteSpace=wrap;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=1;fontSize=13;fontColor=#333333;rounded=1;arcSize=6;" vertex="1" parent="1">
-          <mxGeometry x="80" y="380" width="1100" height="210" as="geometry" />
+        <mxCell id="L3" value="模型层 · backend/llm.py（OpenAI 兼容接口）　可选层" style="swimlane;startSize=32;horizontal=1;html=0;convertToSvg=1;svgWhiteSpace=wrap;fillColor=#ffe6cc;strokeColor=#d79b00;fontStyle=1;fontSize=13;fontColor=#333333;rounded=1;arcSize=6;" vertex="1" parent="1">
+          <mxGeometry x="80" y="380" width="1100" height="150" as="geometry" />
         </mxCell>
-        <mxCell id="c_handle" value="handle() 编排 · 每轮流程&#10;召回 → 执行 → 回写　|　detect_intent() 意图路由　|　每请求 reporter（作用域切换，SSE 各请求独立）" style="rounded=1;arcSize=10;whiteSpace=wrap;html=0;convertToSvg=1;svgWhiteSpace=wrap;fillColor=#ffffff;strokeColor=#d6b656;fontSize=12;fontColor=#333333;" vertex="1" parent="L3">
+        <mxCell id="c_decide" value="complete_json() · 结构化决策&#10;要一份 JSON：这轮做什么 + 要落库什么&#10;模型只「想」，改状态一律由代码做" style="rounded=1;arcSize=10;whiteSpace=wrap;html=0;convertToSvg=1;svgWhiteSpace=wrap;fillColor=#ffffff;strokeColor=#d79b00;fontSize=12;fontColor=#333333;" vertex="1" parent="L3">
+          <mxGeometry x="20" y="48" width="340" height="84" as="geometry" />
+        </mxCell>
+        <mxCell id="c_prompt" value="两段系统提示词&#10;DECIDE_SYSTEM_PROMPT：动作判据 + JSON 约定&#10;REPLY_SYSTEM_PROMPT：禁止替代码吹牛" style="rounded=1;arcSize=10;whiteSpace=wrap;html=0;convertToSvg=1;svgWhiteSpace=wrap;fillColor=#ffffff;strokeColor=#d79b00;fontSize=12;fontColor=#333333;" vertex="1" parent="L3">
+          <mxGeometry x="380" y="48" width="340" height="84" as="geometry" />
+        </mxCell>
+        <mxCell id="c_stream" value="stream() · 流式回复&#10;逐段吐文本增量 → SSE delta 事件&#10;回复只讲「本轮已发生」的事" style="rounded=1;arcSize=10;whiteSpace=wrap;html=0;convertToSvg=1;svgWhiteSpace=wrap;fillColor=#ffffff;strokeColor=#d79b00;fontSize=12;fontColor=#333333;" vertex="1" parent="L3">
+          <mxGeometry x="740" y="48" width="340" height="84" as="geometry" />
+        </mxCell>
+
+        <mxCell id="L4" value="编排与领域层 · backend/agent.py" style="swimlane;startSize=32;horizontal=1;html=0;convertToSvg=1;svgWhiteSpace=wrap;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=1;fontSize=13;fontColor=#333333;rounded=1;arcSize=6;" vertex="1" parent="1">
+          <mxGeometry x="80" y="580" width="1100" height="210" as="geometry" />
+        </mxCell>
+        <mxCell id="c_handle" value="handle() 编排 · 每轮流程&#10;召回 → ① 模型决策 → 代码执行 → ② 模型流式回复　|　模型调不通就整轮退回 detect_intent() 规则路由　|　每请求 reporter（作用域切换，SSE 各请求独立）" style="rounded=1;arcSize=10;whiteSpace=wrap;html=0;convertToSvg=1;svgWhiteSpace=wrap;fillColor=#ffffff;strokeColor=#d6b656;fontSize=12;fontColor=#333333;" vertex="1" parent="L4">
           <mxGeometry x="20" y="48" width="1080" height="56" as="geometry" />
         </mxCell>
-        <mxCell id="c_planner" value="planner.py · 计划拆解&#10;目标 → 阶段 → 每日待办&#10;规则拆解：每日限量 · 末尾留白" style="rounded=1;arcSize=10;whiteSpace=wrap;html=0;convertToSvg=1;svgWhiteSpace=wrap;fillColor=#ffffff;strokeColor=#d6b656;fontSize=12;fontColor=#333333;" vertex="1" parent="L3">
+        <mxCell id="c_planner" value="planner.py · 计划拆解&#10;目标 → 阶段 → 每日待办&#10;规则拆解：每日限量 · 末尾留白　|　模型给的清单也要按预算裁剪" style="rounded=1;arcSize=10;whiteSpace=wrap;html=0;convertToSvg=1;svgWhiteSpace=wrap;fillColor=#ffffff;strokeColor=#d6b656;fontSize=12;fontColor=#333333;" vertex="1" parent="L4">
           <mxGeometry x="20" y="140" width="480" height="58" as="geometry" />
         </mxCell>
-        <mxCell id="c_review" value="review.py · 每日复盘&#10;对账 · 找规律 · 沉淀&#10;摘要进短期，只有强信号才进长期" style="rounded=1;arcSize=10;whiteSpace=wrap;html=0;convertToSvg=1;svgWhiteSpace=wrap;fillColor=#ffffff;strokeColor=#d6b656;fontSize=12;fontColor=#333333;" vertex="1" parent="L3">
+        <mxCell id="c_review" value="review.py · 每日复盘&#10;对账 · 找规律 · 沉淀&#10;摘要进短期，只有强信号才进长期" style="rounded=1;arcSize=10;whiteSpace=wrap;html=0;convertToSvg=1;svgWhiteSpace=wrap;fillColor=#ffffff;strokeColor=#d6b656;fontSize=12;fontColor=#333333;" vertex="1" parent="L4">
           <mxGeometry x="540" y="140" width="520" height="58" as="geometry" />
         </mxCell>
 
-        <mxCell id="L4" value="记忆层 · backend/memory.py　★ 本示例重点" style="swimlane;startSize=32;horizontal=1;html=0;convertToSvg=1;svgWhiteSpace=wrap;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1;fontSize=13;fontColor=#333333;strokeWidth=2;rounded=1;arcSize=6;" vertex="1" parent="1">
-          <mxGeometry x="80" y="640" width="1100" height="300" as="geometry" />
+        <mxCell id="L5" value="记忆层 · backend/memory.py　★ 本示例重点" style="swimlane;startSize=32;horizontal=1;html=0;convertToSvg=1;svgWhiteSpace=wrap;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1;fontSize=13;fontColor=#333333;strokeWidth=2;rounded=1;arcSize=6;" vertex="1" parent="1">
+          <mxGeometry x="80" y="840" width="1100" height="300" as="geometry" />
         </mxCell>
-        <mxCell id="c_short" value="ShortTermMemory 短期工作区&#10;当天有效 · 满了折叠成摘要&#10;跨天清空 · 重复提及累加" style="rounded=1;arcSize=10;whiteSpace=wrap;html=0;convertToSvg=1;svgWhiteSpace=wrap;fillColor=#ffffff;strokeColor=#9673a6;fontSize=12;fontColor=#333333;" vertex="1" parent="L4">
+        <mxCell id="c_short" value="ShortTermMemory 短期工作区&#10;当天有效 · 满了折叠成摘要&#10;跨天清空 · 重复提及累加" style="rounded=1;arcSize=10;whiteSpace=wrap;html=0;convertToSvg=1;svgWhiteSpace=wrap;fillColor=#ffffff;strokeColor=#9673a6;fontSize=12;fontColor=#333333;" vertex="1" parent="L5">
           <mxGeometry x="30" y="44" width="340" height="84" as="geometry" />
         </mxCell>
-        <mxCell id="c_long" value="LongTermMemory 长期档案&#10;跨会话保留 · 槽位去重&#10;同一件事只留最新说法，旧的仍可追溯" style="rounded=1;arcSize=10;whiteSpace=wrap;html=0;convertToSvg=1;svgWhiteSpace=wrap;fillColor=#ffffff;strokeColor=#9673a6;fontSize=12;fontColor=#333333;" vertex="1" parent="L4">
+        <mxCell id="c_long" value="LongTermMemory 长期档案&#10;跨会话保留 · 槽位去重&#10;同一件事只留最新说法，旧的仍可追溯" style="rounded=1;arcSize=10;whiteSpace=wrap;html=0;convertToSvg=1;svgWhiteSpace=wrap;fillColor=#ffffff;strokeColor=#9673a6;fontSize=12;fontColor=#333333;" vertex="1" parent="L5">
           <mxGeometry x="520" y="44" width="340" height="84" as="geometry" />
         </mxCell>
-        <mxCell id="c_score" value="tokenize · recall_score&#10;中文按二元组切分&#10;打分：词片重合 + 重要度 + 新鲜度 + 频次" style="rounded=1;arcSize=10;whiteSpace=wrap;html=0;convertToSvg=1;svgWhiteSpace=wrap;fillColor=#ffffff;strokeColor=#9673a6;fontSize=12;fontColor=#333333;" vertex="1" parent="L4">
+        <mxCell id="c_score" value="tokenize · recall_score&#10;中文按二元组切分&#10;打分：词片重合 + 重要度 + 新鲜度 + 频次" style="rounded=1;arcSize=10;whiteSpace=wrap;html=0;convertToSvg=1;svgWhiteSpace=wrap;fillColor=#ffffff;strokeColor=#9673a6;fontSize=12;fontColor=#333333;" vertex="1" parent="L5">
           <mxGeometry x="30" y="180" width="340" height="84" as="geometry" />
         </mxCell>
-        <mxCell id="c_manager" value="MemoryManager 门面&#10;remember · recall · promote · rollover&#10;长期记忆只能经 promote() 写入" style="rounded=1;arcSize=10;whiteSpace=wrap;html=0;convertToSvg=1;svgWhiteSpace=wrap;fillColor=#ffffff;strokeColor=#9673a6;fontSize=12;fontColor=#333333;" vertex="1" parent="L4">
+        <mxCell id="c_manager" value="MemoryManager 门面&#10;remember · recall · promote · rollover&#10;长期记忆只能经 promote() 写入" style="rounded=1;arcSize=10;whiteSpace=wrap;html=0;convertToSvg=1;svgWhiteSpace=wrap;fillColor=#ffffff;strokeColor=#9673a6;fontSize=12;fontColor=#333333;" vertex="1" parent="L5">
           <mxGeometry x="520" y="180" width="340" height="84" as="geometry" />
         </mxCell>
 
-        <mxCell id="L5" value="存储层 · backend/storage.py（JSON 持久化）" style="swimlane;startSize=32;horizontal=1;html=0;convertToSvg=1;svgWhiteSpace=wrap;fillColor=#f8cecc;strokeColor=#b85450;fontStyle=1;fontSize=13;fontColor=#333333;rounded=1;arcSize=6;" vertex="1" parent="1">
-          <mxGeometry x="80" y="990" width="1100" height="140" as="geometry" />
+        <mxCell id="L6" value="存储层 · backend/storage.py（JSON 持久化）" style="swimlane;startSize=32;horizontal=1;html=0;convertToSvg=1;svgWhiteSpace=wrap;fillColor=#f8cecc;strokeColor=#b85450;fontStyle=1;fontSize=13;fontColor=#333333;rounded=1;arcSize=6;" vertex="1" parent="1">
+          <mxGeometry x="80" y="1190" width="1100" height="140" as="geometry" />
         </mxCell>
-        <mxCell id="c_json1" value="goals.json · plans.json&#10;目标与每日待办" style="rounded=1;arcSize=10;whiteSpace=wrap;html=0;convertToSvg=1;svgWhiteSpace=wrap;fillColor=#ffffff;strokeColor=#b85450;fontSize=12;fontColor=#333333;" vertex="1" parent="L5">
+        <mxCell id="c_json1" value="goals.json · plans.json&#10;目标与每日待办" style="rounded=1;arcSize=10;whiteSpace=wrap;html=0;convertToSvg=1;svgWhiteSpace=wrap;fillColor=#ffffff;strokeColor=#b85450;fontSize=12;fontColor=#333333;" vertex="1" parent="L6">
           <mxGeometry x="20" y="48" width="520" height="72" as="geometry" />
         </mxCell>
-        <mxCell id="c_json2" value="reviews.json · memory.json&#10;复盘记录与两级记忆" style="rounded=1;arcSize=10;whiteSpace=wrap;html=0;convertToSvg=1;svgWhiteSpace=wrap;fillColor=#ffffff;strokeColor=#b85450;fontSize=12;fontColor=#333333;" vertex="1" parent="L5">
+        <mxCell id="c_json2" value="reviews.json · memory.json&#10;复盘记录与两级记忆" style="rounded=1;arcSize=10;whiteSpace=wrap;html=0;convertToSvg=1;svgWhiteSpace=wrap;fillColor=#ffffff;strokeColor=#b85450;fontSize=12;fontColor=#333333;" vertex="1" parent="L6">
           <mxGeometry x="580" y="48" width="500" height="72" as="geometry" />
         </mxCell>
 
-        <mxCell id="R1" value="SSE 事件协议&#10;&#10;POST /api/chat → text/event-stream&#10;&#10;status　阶段提示&#10;step　　一条留痕（渲染&quot;这轮动了哪块记忆&quot;）&#10;reply　 回答正文&#10;state　 全量状态快照&#10;error　 错误说明&#10;&#10;留痕单独推事件，是为了让工作台&#10;把「召回 → 记录目标 → 长期记忆 → 回写」&#10;这条链路摊开给人看，而不是只给结论。&#10;&#10;EventSource 只支持 GET 且不能带 body，&#10;所以用 fetch + ReadableStream 自己切帧。" style="rounded=1;arcSize=10;whiteSpace=wrap;html=0;convertToSvg=1;svgWhiteSpace=wrap;align=left;spacingLeft=12;verticalAlign=top;fillColor=#ffffff;strokeColor=#999999;fontSize=12;fontColor=#333333;" vertex="1" parent="1">
-          <mxGeometry x="1220" y="20" width="340" height="320" as="geometry" />
+        <mxCell id="R1" value="SSE 事件协议&#10;&#10;POST /api/chat → text/event-stream&#10;&#10;status　阶段提示&#10;step　　一条留痕（渲染&quot;这轮动了哪块记忆&quot;）&#10;delta　  回复增量（逐字推，前端累积）&#10;reply　 完整回复&#10;state　 全量状态快照&#10;error　 错误说明&#10;&#10;留痕单独推事件，是为了让工作台&#10;把「召回 → 记录目标 → 长期记忆 → 回写」&#10;这条链路摊开给人看，而不是只给结论。&#10;&#10;EventSource 只支持 GET 且不能带 body，&#10;所以用 fetch + ReadableStream 自己切帧。" style="rounded=1;arcSize=10;whiteSpace=wrap;html=0;convertToSvg=1;svgWhiteSpace=wrap;align=left;spacingLeft=12;verticalAlign=top;fillColor=#ffffff;strokeColor=#999999;fontSize=12;fontColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="1320" y="20" width="340" height="340" as="geometry" />
         </mxCell>
 
-        <mxCell id="R2" value="关键约定：两级记忆&#10;&#10;① 归属不同&#10;　服务端是唯一真相，快照整体替换&#10;　不做局部合并，避免留下脏数据&#10;&#10;② 长期记忆只能经 promote() 写入&#10;　每条都经过&quot;值得记住&quot;的判断&#10;&#10;③ 同一件事只留最新说法&#10;　槽位归一化去掉数字，&#10;　&quot;每天学 2 小时&quot;与&quot;3 小时&quot;同槽&#10;　旧的标记 superseded 但不删除&#10;&#10;④ 跨天先晋升再清空&#10;　顺序反了，值得沉淀的就丢了&#10;&#10;⑤ 时间预算是状态约束，不是话题&#10;　&quot;生成计划&quot;召不回&quot;每天 30 分钟&quot;&#10;　所以直接扫档案取，不靠相关性检索" style="rounded=1;arcSize=10;whiteSpace=wrap;html=0;convertToSvg=1;svgWhiteSpace=wrap;align=left;spacingLeft=12;verticalAlign=top;fillColor=#ffffff;strokeColor=#9673a6;fontSize=12;fontColor=#333333;" vertex="1" parent="1">
-          <mxGeometry x="1220" y="360" width="340" height="400" as="geometry" />
+        <mxCell id="R2" value="关键约定：两级记忆&#10;&#10;① 归属不同&#10;　服务端是唯一真相，快照整体替换&#10;　不做局部合并，避免留下脏数据&#10;② 长期记忆只能经 promote() 写入&#10;　每条都经过&quot;值得记住&quot;的判断&#10;③ 同一件事只留最新说法&#10;　槽位归一化去掉数字，&#10;　&quot;每天学 2 小时&quot;与&quot;3 小时&quot;同槽&#10;　旧的标记 superseded 但不删除&#10;④ 跨天先晋升再清空&#10;　顺序反了，值得沉淀的就丢了&#10;⑤ 时间预算是状态约束，不是话题&#10;　&quot;生成计划&quot;召不回&#10;　&quot;每天 30 分钟&quot;&#10;　所以直接扫档案取，不靠相关性检索&#10;⑥ 决策与执行分离&#10;　模型只输出「做什么 + 记什么」，&#10;　改状态一律由代码执行，&#10;　所以留痕必然真实、promote() 绕不过" style="rounded=1;arcSize=10;whiteSpace=wrap;html=0;convertToSvg=1;svgWhiteSpace=wrap;align=left;spacingLeft=12;verticalAlign=top;fillColor=#ffffff;strokeColor=#9673a6;fontSize=12;fontColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="1320" y="390" width="340" height="440" as="geometry" />
         </mxCell>
 
-        <mxCell id="R3" value="数据目录与接口&#10;&#10;~/.study-planner/&#10;　goals.json　　plans.json&#10;　reviews.json　memory.json&#10;&#10;STUDY_PLANNER_DATA_DIR 可改目录&#10;&#10;接口&#10;　GET　/health　　　　健康检查&#10;　GET　/api/state　　 全量快照&#10;　POST /api/chat　　 SSE 对话&#10;　POST /api/tasks/{id}/toggle&#10;　POST /api/goals　　建目标并排计划&#10;　POST /api/rollover　模拟跨天&#10;　POST /api/reset　　清空数据" style="rounded=1;arcSize=10;whiteSpace=wrap;html=0;convertToSvg=1;svgWhiteSpace=wrap;align=left;spacingLeft=12;verticalAlign=top;fillColor=#ffffff;strokeColor=#999999;fontSize=12;fontColor=#333333;" vertex="1" parent="1">
-          <mxGeometry x="1220" y="780" width="340" height="350" as="geometry" />
+        <mxCell id="R3" value="数据目录与接口&#10;&#10;~/.study-planner/&#10;　goals.json　　plans.json&#10;　reviews.json　memory.json&#10;&#10;STUDY_PLANNER_DATA_DIR 可改目录&#10;&#10;接口&#10;　GET　/health　　　　健康检查（mode: model | rule）&#10;　GET　/api/state　　 全量快照&#10;　POST /api/chat　　 SSE 对话&#10;　POST /api/tasks/{id}/toggle&#10;　POST /api/goals　　建目标并排计划&#10;　POST /api/rollover　模拟跨天&#10;　POST /api/reset　　清空数据" style="rounded=1;arcSize=10;whiteSpace=wrap;html=0;convertToSvg=1;svgWhiteSpace=wrap;align=left;spacingLeft=12;verticalAlign=top;fillColor=#ffffff;strokeColor=#999999;fontSize=12;fontColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="1320" y="860" width="340" height="350" as="geometry" />
         </mxCell>
 
-        <mxCell id="F1" value="数据流：用户输入 → api.js（POST /api/chat）→ 工作线程调用 handle() → 召回记忆 → 执行（排计划 / 复盘）→ 回写记忆 → 留痕与回答经 SSE 逐条推回 → 状态快照刷新右侧面板" style="text;html=0;convertToSvg=1;svgWhiteSpace=wrap;align=left;verticalAlign=middle;fontSize=12;fontColor=#555555;" vertex="1" parent="1">
-          <mxGeometry x="80" y="1160" width="1100" height="38" as="geometry" />
+        <mxCell id="R4" value="两种模式&#10;&#10;模型模式（配了 LLM_API_KEY）&#10;　① 模型出结构化决策 → 代码执行&#10;　② 模型流式回复 → delta 逐字推&#10;　没做成的动作不许说成做了&#10;&#10;规则模式（无 key / 模型调不通）&#10;　detect_intent() 规则路由 + 模板回答&#10;　离线可用，模型挂了服务照常&#10;&#10;命令行入口固定走规则模式：&#10;离线可跑、回答可复现、不受网络影响。" style="rounded=1;arcSize=10;whiteSpace=wrap;html=0;convertToSvg=1;svgWhiteSpace=wrap;align=left;spacingLeft=12;verticalAlign=top;fillColor=#ffffff;strokeColor=#d79b00;fontSize=12;fontColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="1320" y="1240" width="340" height="210" as="geometry" />
+        </mxCell>
+
+        <mxCell id="F1" value="数据流（模型模式）：用户输入 → api.js（POST /api/chat）→ 工作线程调 handle() → 召回记忆 → ① 模型给结构化决策 JSON → 代码执行（记目标 / 排计划 / 复盘 / 落记忆）" style="text;html=0;convertToSvg=1;svgWhiteSpace=wrap;align=left;verticalAlign=middle;fontSize=12;fontColor=#555555;" vertex="1" parent="1">
+          <mxGeometry x="80" y="1350" width="1100" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="F2" value="→ ② 模型流式回复，delta 逐段经 SSE 推回 → 留痕与状态快照刷新右侧面板；模型调不通则整轮退回规则模式（detect_intent() 模板回答）" style="text;html=0;convertToSvg=1;svgWhiteSpace=wrap;align=left;verticalAlign=middle;fontSize=12;fontColor=#555555;" vertex="1" parent="1">
+          <mxGeometry x="80" y="1384" width="1100" height="30" as="geometry" />
         </mxCell>
 
         <mxCell id="e_a" value="封装 / 解析" style="edgeStyle=orthogonalEdgeStyle;rounded=1;jettySize=auto;html=0;convertToSvg=1;svgWhiteSpace=wrap;exitX=1.0000;exitY=0.5000;exitDx=0;exitDy=0;entryX=0.0000;entryY=0.5000;entryDx=0;entryDy=0;strokeColor=#666666;strokeWidth=1.5;fontSize=11;fontColor=#555555;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="c_api" target="c_store">
@@ -92,8 +112,13 @@
         <mxCell id="e1" value="POST /api/chat" style="edgeStyle=orthogonalEdgeStyle;rounded=1;jettySize=auto;html=0;convertToSvg=1;svgWhiteSpace=wrap;exitX=0.5517;exitY=1.0000;exitDx=0;exitDy=0;entryX=0.3478;entryY=0.0000;entryDx=0;entryDy=0;strokeColor=#666666;strokeWidth=1.5;fontSize=11;fontColor=#555555;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="c_api" target="c_iface">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e2" value="起线程 · 调 handle()" style="edgeStyle=orthogonalEdgeStyle;rounded=1;jettySize=auto;html=0;convertToSvg=1;svgWhiteSpace=wrap;exitX=0.3684;exitY=1.0000;exitDx=0;exitDy=0;entryX=0.6481;entryY=0.0000;entryDx=0;entryDy=0;strokeColor=#666666;strokeWidth=1.5;fontSize=11;fontColor=#555555;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="c_worker" target="c_handle">
-          <mxGeometry relative="1" as="geometry" />
+        <mxCell id="e2" value="起线程 · 调 handle()" style="edgeStyle=orthogonalEdgeStyle;rounded=1;jettySize=auto;html=0;convertToSvg=1;svgWhiteSpace=wrap;exitX=1.0000;exitY=0.5000;exitDx=0;exitDy=0;entryX=1.0000;entryY=0.5000;entryDx=0;entryDy=0;strokeColor=#666666;strokeWidth=1.5;fontSize=11;fontColor=#555555;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="c_worker" target="c_handle">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1250" y="282" />
+              <mxPoint x="1250" y="656" />
+            </Array>
+          </mxGeometry>
         </mxCell>
         <mxCell id="e3" value="生成计划" style="edgeStyle=orthogonalEdgeStyle;rounded=1;jettySize=auto;html=0;convertToSvg=1;svgWhiteSpace=wrap;exitX=0.0926;exitY=1.0000;exitDx=0;exitDy=0;entryX=0.2083;entryY=0.0000;entryDx=0;entryDy=0;strokeColor=#666666;strokeWidth=1.5;fontSize=11;fontColor=#555555;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="c_handle" target="c_planner">
           <mxGeometry relative="1" as="geometry" />
@@ -104,25 +129,39 @@
         <mxCell id="e5" value="promote() 强信号晋升" style="edgeStyle=orthogonalEdgeStyle;rounded=1;jettySize=auto;html=0;convertToSvg=1;svgWhiteSpace=wrap;exitX=0.1038;exitY=1.0000;exitDx=0;exitDy=0;entryX=0.5000;entryY=0.0000;entryDx=0;entryDy=0;strokeColor=#9673a6;strokeWidth=1.5;fontSize=11;fontColor=#555555;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="c_review" target="c_long">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="674" y="615" />
-              <mxPoint x="770" y="615" />
+              <mxPoint x="674" y="806" />
+              <mxPoint x="770" y="806" />
             </Array>
           </mxGeometry>
         </mxCell>
         <mxCell id="e6" value="recall() 召回记忆" style="edgeStyle=orthogonalEdgeStyle;rounded=1;jettySize=auto;html=0;convertToSvg=1;svgWhiteSpace=wrap;exitX=0.9815;exitY=1.0000;exitDx=0;exitDy=0;entryX=1.0000;entryY=0.5000;entryDx=0;entryDy=0;strokeColor=#9673a6;strokeWidth=1.5;fontSize=11;fontColor=#555555;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="c_handle" target="c_manager">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="1160" y="862" />
+              <mxPoint x="1160" y="1062" />
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="e_promote" value="promote() 晋升（唯一入口）" style="edgeStyle=orthogonalEdgeStyle;rounded=1;jettySize=auto;html=0;convertToSvg=1;svgWhiteSpace=wrap;exitX=1.0000;exitY=0.1905;exitDx=0;exitDy=0;entryX=0.0000;entryY=0.1905;entryDx=0;entryDy=0;strokeColor=#9673a6;strokeWidth=2;fontSize=11;fontColor=#555555;labelBackgroundColor=#ffffff;" edge="1" parent="L4" source="c_short" target="c_long">
+        <mxCell id="e_decide" value="① 决策：一次性拿 JSON" style="edgeStyle=orthogonalEdgeStyle;rounded=1;jettySize=auto;html=0;convertToSvg=1;svgWhiteSpace=wrap;startArrow=block;startFill=1;endArrow=block;endFill=1;exitX=0.0926;exitY=0.0000;exitDx=0;exitDy=0;entryX=0.2941;entryY=1.0000;entryDx=0;entryDy=0;strokeColor=#d79b00;strokeWidth=2;fontSize=11;fontColor=#555555;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="c_handle" target="c_decide">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e_recall" value="取回 top-k" style="edgeStyle=orthogonalEdgeStyle;rounded=1;jettySize=auto;html=0;convertToSvg=1;svgWhiteSpace=wrap;exitX=0.5000;exitY=1.0000;exitDx=0;exitDy=0;entryX=0.5000;entryY=0.0000;entryDx=0;entryDy=0;strokeColor=#9673a6;strokeWidth=2;fontSize=11;fontColor=#555555;labelBackgroundColor=#ffffff;dashed=1;" edge="1" parent="L4" source="c_long" target="c_manager">
+        <mxCell id="e_stream" value="② 流式回复" style="edgeStyle=orthogonalEdgeStyle;rounded=1;jettySize=auto;html=0;convertToSvg=1;svgWhiteSpace=wrap;startArrow=block;startFill=1;endArrow=block;endFill=1;exitX=0.6944;exitY=0.0000;exitDx=0;exitDy=0;entryX=0.0882;entryY=1.0000;entryDx=0;entryDy=0;strokeColor=#d79b00;strokeWidth=2;fontSize=11;fontColor=#555555;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="c_handle" target="c_stream">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e_remember" value="remember() 写入" style="edgeStyle=orthogonalEdgeStyle;rounded=1;jettySize=auto;html=0;convertToSvg=1;svgWhiteSpace=wrap;exitX=0.0000;exitY=0.5000;exitDx=0;exitDy=0;entryX=1.0000;entryY=0.5000;entryDx=0;entryDy=0;strokeColor=#9673a6;strokeWidth=1.5;fontSize=11;fontColor=#555555;labelBackgroundColor=#ffffff;" edge="1" parent="L4" source="c_manager" target="c_short">
+        <mxCell id="e_delta" value="delta 增量逐字推" style="edgeStyle=orthogonalEdgeStyle;rounded=1;jettySize=auto;html=0;convertToSvg=1;svgWhiteSpace=wrap;exitX=0.5000;exitY=0.0000;exitDx=0;exitDy=0;entryX=0.9500;entryY=1.0000;entryDx=0;entryDy=0;strokeColor=#d79b00;strokeWidth=1.5;fontSize=11;fontColor=#555555;labelBackgroundColor=#ffffff;dashed=1;" edge="1" parent="1" source="c_stream" target="c_iface">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="990" y="360" />
+              <mxPoint x="537" y="360" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_promote" value="promote() 晋升（唯一入口）" style="edgeStyle=orthogonalEdgeStyle;rounded=1;jettySize=auto;html=0;convertToSvg=1;svgWhiteSpace=wrap;exitX=1.0000;exitY=0.1905;exitDx=0;exitDy=0;entryX=0.0000;entryY=0.1905;entryDx=0;entryDy=0;strokeColor=#9673a6;strokeWidth=2;fontSize=11;fontColor=#555555;labelBackgroundColor=#ffffff;" edge="1" parent="L5" source="c_short" target="c_long">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_recall" value="取回 top-k" style="edgeStyle=orthogonalEdgeStyle;rounded=1;jettySize=auto;html=0;convertToSvg=1;svgWhiteSpace=wrap;exitX=0.5000;exitY=1.0000;exitDx=0;exitDy=0;entryX=0.5000;entryY=0.0000;entryDx=0;entryDy=0;strokeColor=#9673a6;strokeWidth=2;fontSize=11;fontColor=#555555;labelBackgroundColor=#ffffff;dashed=1;" edge="1" parent="L5" source="c_long" target="c_manager">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_remember" value="remember() 写入" style="edgeStyle=orthogonalEdgeStyle;rounded=1;jettySize=auto;html=0;convertToSvg=1;svgWhiteSpace=wrap;exitX=0.0000;exitY=0.5000;exitDx=0;exitDy=0;entryX=1.0000;entryY=0.5000;entryDx=0;entryDy=0;strokeColor=#9673a6;strokeWidth=1.5;fontSize=11;fontColor=#555555;labelBackgroundColor=#ffffff;" edge="1" parent="L5" source="c_manager" target="c_short">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
               <mxPoint x="445" y="222" />
@@ -130,23 +169,23 @@
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="e_score" value="打分" style="edgeStyle=orthogonalEdgeStyle;rounded=1;jettySize=auto;html=0;convertToSvg=1;svgWhiteSpace=wrap;exitX=0.0000;exitY=0.7857;exitDx=0;exitDy=0;entryX=1.0000;entryY=0.7857;entryDx=0;entryDy=0;strokeColor=#9673a6;strokeWidth=1.5;fontSize=11;fontColor=#555555;labelBackgroundColor=#ffffff;" edge="1" parent="L4" source="c_manager" target="c_score">
+        <mxCell id="e_score" value="打分" style="edgeStyle=orthogonalEdgeStyle;rounded=1;jettySize=auto;html=0;convertToSvg=1;svgWhiteSpace=wrap;exitX=0.0000;exitY=0.7857;exitDx=0;exitDy=0;entryX=1.0000;entryY=0.7857;entryDx=0;entryDy=0;strokeColor=#9673a6;strokeWidth=1.5;fontSize=11;fontColor=#555555;labelBackgroundColor=#ffffff;" edge="1" parent="L5" source="c_manager" target="c_score">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
         <mxCell id="e7" value="落盘" style="edgeStyle=orthogonalEdgeStyle;rounded=1;jettySize=auto;html=0;convertToSvg=1;svgWhiteSpace=wrap;exitX=0.5000;exitY=1.0000;exitDx=0;exitDy=0;entryX=0.3400;entryY=0.0000;entryDx=0;entryDy=0;strokeColor=#666666;strokeWidth=1.5;fontSize=11;fontColor=#555555;labelBackgroundColor=#ffffff;" edge="1" parent="1" source="c_manager" target="c_json2">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="770" y="960" />
-              <mxPoint x="830" y="960" />
+              <mxPoint x="770" y="1160" />
+              <mxPoint x="830" y="1160" />
             </Array>
           </mxGeometry>
         </mxCell>
         <mxCell id="e9" value="启动时恢复两级记忆" style="edgeStyle=orthogonalEdgeStyle;rounded=1;jettySize=auto;html=0;convertToSvg=1;svgWhiteSpace=wrap;exitX=1.0000;exitY=0.5000;exitDx=0;exitDy=0;entryX=0.8559;entryY=1.0000;entryDx=0;entryDy=0;strokeColor=#666666;strokeWidth=1.5;fontSize=11;fontColor=#555555;labelBackgroundColor=#ffffff;dashed=1;" edge="1" parent="1" source="c_json2" target="c_manager">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="1195" y="1074" />
-              <mxPoint x="1195" y="960" />
-              <mxPoint x="891" y="960" />
+              <mxPoint x="1195" y="1274" />
+              <mxPoint x="1195" y="1160" />
+              <mxPoint x="891" y="1160" />
             </Array>
           </mxGeometry>
         </mxCell>

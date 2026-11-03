@@ -516,6 +516,148 @@ def _item(category: str, content: str):
     )
 
 
+class ScriptedLLM:
+    """脚本化的假模型：自检不联网，但走的确实是模型模式的代码路径。
+
+    真实模型会给出什么样的决策，这里就写死成什么样。
+    自检要验的是"模型决策能不能正确落到状态上"，
+    不是模型聪不聪明——后者只有真机联调能验。
+    """
+
+    def __init__(
+        self,
+        decisions: list[dict] | None = None,
+        reply: str = "好的，已经处理完了。",
+        fail: bool = False,
+    ) -> None:
+        self.decisions = list(decisions or [])
+        self.reply = reply
+        self.fail = fail
+        self.decided: list[list[dict[str, str]]] = []
+        self.streamed: list[list[dict[str, str]]] = []
+
+    def complete_json(self, messages: list[dict[str, str]]) -> dict:
+        if self.fail:
+            raise RuntimeError("模型不可用")
+
+        self.decided.append(messages)
+
+        return dict(self.decisions.pop(0)) if self.decisions else {}
+
+    def stream(self, messages: list[dict[str, str]]):
+        from .llm import Delta
+
+        self.streamed.append(messages)
+
+        for char in self.reply:
+            yield Delta(text=char)
+
+
+def test_model_mode() -> None:
+    """模型模式：模型给决策，代码落状态、裁预算、写记忆。"""
+
+    print("\n[18] 模型模式")
+
+    today = date.today().isoformat()
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        storage = __import__("study_planner.backend.storage", fromlist=["Storage"]).Storage(root)
+
+        llm = ScriptedLLM(
+            decisions=[
+                {
+                    "action": "record_goal",
+                    "goal": {"title": "Python 数据分析", "deadline": "", "tags": ["编程"]},
+                    "memory": [
+                        {
+                            "text": "学习目标：Python 数据分析",
+                            "category": "goal",
+                            "importance": 5,
+                            "promote": True,
+                        },
+                        {
+                            # 换个说法说预算：必须被归一化成统一措辞，
+                            # 否则会落到另一个槽位，档案里堆出两条互相矛盾的预算
+                            "text": "每天只有 30 分钟",
+                            "category": "preference",
+                            "importance": 5,
+                            "promote": True,
+                        },
+                    ],
+                },
+                {
+                    "action": "generate_plan",
+                    # 故意超预算：一天两条各 60 分钟，预算只有 30
+                    "plan": [
+                        {"date": today, "title": "环境搭建", "minutes": 60},
+                        {"date": today, "title": "再来一条", "minutes": 60},
+                    ],
+                },
+            ],
+            reply="记下目标了，计划也按你每天 30 分钟排好了。",
+        )
+
+        planner = StudyPlanner(memory=storage.build_memory(), llm=llm)
+
+        turn = planner.handle("我想学 Python 数据分析")
+
+        check("模型的决定落成了目标", len(planner.goals) == 1, str(planner.goals))
+        check("目标进了长期档案", any("Python" in i.content for i in planner.memory.long.items))
+        check(
+            "预算说法被归一化",
+            any(i.content == "每天可学习时间：30 分钟" for i in planner.memory.long.items),
+            str([i.content for i in planner.memory.long.items]),
+        )
+        check("回复来自模型", turn.reply == llm.reply, turn.reply)
+        check("留痕里有模型决策", any(s.phase == "决策" for s in turn.steps))
+
+        chunks: list[str] = []
+        turn = planner.handle("生成计划", on_delta=chunks.append)
+
+        check("计划落了待办", len(planner.items) >= 1, str(len(planner.items)))
+        check(
+            "超预算的条目被裁掉",
+            sum(1 for i in planner.items if i.day == today) == 1,
+            str([(i.title, i.minutes) for i in planner.items]),
+        )
+        check(
+            "单条不超过每日预算",
+            all(i.minutes <= 30 for i in planner.items),
+            str([i.minutes for i in planner.items]),
+        )
+        check("裁剪有留痕", any(s.phase == "排期校验" for s in turn.steps), str(turn.steps))
+        check("回复逐段推送", len(chunks) > 1, str(len(chunks)))
+        check("排期依据如实写明来源", any(s.phase == "排期依据" and "长期记忆" in s.title for s in turn.steps), str(turn.steps))
+
+        # 长期记忆只能经 promote() 写入：模型说 promote 的那条确实进了长期档案
+        long_items = [i for i in planner.memory.long.items if not i.superseded_by]
+        check(
+            "模型判定的记忆进了长期档案",
+            any(i.content == "每天可学习时间：30 分钟" for i in long_items),
+            str([i.content for i in long_items]),
+        )
+
+
+def test_model_failure_falls_back() -> None:
+    """模型调不通时退回规则模式，服务不能整个不可用。"""
+
+    print("\n[19] 模型失败降级")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        storage = __import__("study_planner.backend.storage", fromlist=["Storage"]).Storage(root)
+
+        llm = ScriptedLLM(fail=True)
+        planner = StudyPlanner(memory=storage.build_memory(), llm=llm)
+
+        turn = planner.handle("我想学 Python 数据分析")
+
+        check("模型挂了仍然能记录目标", len(planner.goals) == 1, str(planner.goals))
+        check("留痕说明了失败", any(s.phase == "模型" and not s.ok for s in turn.steps), str(turn.steps))
+        check("降级后走的是规则回复", "记下了" in turn.reply, turn.reply)
+
+
 def main() -> int:
     """自检入口。"""
 
@@ -541,6 +683,8 @@ def main() -> int:
     test_long_term_budget_affects_plan()
     test_budget_capture()
     test_goal_dedup()
+    test_model_mode()
+    test_model_failure_falls_back()
 
     print("\n" + "=" * 56)
     print(f"通过 {PASSED} 项，失败 {FAILED} 项")

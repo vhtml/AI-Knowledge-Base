@@ -37,11 +37,13 @@ def build_client(root: Path) -> TestClient:
     """装配一个指向临时数据目录的测试客户端。
 
     每个测试用独立目录，互不干扰，也不动真实数据。
+    默认走**规则模式**：自检不能联网，也不能依赖模型今天心情如何。
     """
 
     from .main import app, session
 
     session.rebind(root)
+    session.planner.llm = None
 
     return TestClient(app)
 
@@ -146,6 +148,63 @@ def test_chat_stream() -> None:
             names.index("reply") > names.index("step")
             and names.index("state") > names.index("reply"),
             str(names),
+        )
+
+
+def test_model_mode_stream() -> None:
+    """模型模式：SSE 推 delta 增量，末尾仍给完整 reply。"""
+
+    print("\n[9] 模型模式流式")
+
+    from .main import session
+    from .selftest import ScriptedLLM
+
+    with tempfile.TemporaryDirectory() as tmp:
+        client = build_client(Path(tmp))
+
+        session.planner.llm = ScriptedLLM(
+            decisions=[
+                {
+                    "action": "record_goal",
+                    "goal": {"title": "Python 数据分析", "deadline": "", "tags": []},
+                    "memory": [],
+                }
+            ],
+            reply="记下了，接下来想排个计划吗？",
+        )
+
+        try:
+            res = client.post("/api/chat", json={"message": "我想学 Python 数据分析"})
+        finally:
+            session.planner.llm = None
+
+        events = parse_events(res.text)
+        names = [name for name, _ in events]
+
+        deltas = [data for name, data in events if name == "delta"]
+        check("有 delta 事件", len(deltas) > 0, str(names))
+        check(
+            "delta 带文本增量",
+            all(isinstance(d.get("text"), str) and d["text"] for d in deltas),
+            str(deltas[:2]),
+        )
+
+        reply = next((data for name, data in events if name == "reply"), None)
+        check("仍然有完整 reply", reply is not None, str(names))
+        check(
+            "delta 拼起来等于完整正文",
+            reply is not None and "".join(d["text"] for d in deltas) == reply["text"],
+            str(reply),
+        )
+
+        state = next(data for name, data in events if name == "state")
+        check("模型的决定落进了状态", len(state["goals"]) == 1, str(state["goals"]))
+
+        steps = [data for name, data in events if name == "step"]
+        check(
+            "留痕里有模型决策",
+            any(step["phase"] == "决策" for step in steps),
+            str([s["phase"] for s in steps]),
         )
 
 
@@ -308,6 +367,7 @@ def main() -> int:
     test_health()
     test_state_snapshot()
     test_chat_stream()
+    test_model_mode_stream()
     test_budget_flow()
     test_toggle_task()
     test_rollover()
