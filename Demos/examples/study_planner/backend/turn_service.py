@@ -9,6 +9,8 @@ from typing import Any, Callable
 from zoneinfo import ZoneInfo
 from datetime import date, datetime, timedelta
 
+from .context import Clock, ContextBuilder
+from .maintenance import Maintenance
 from .agent import StepRecord, StudyPlanner, Turn, detect_intent
 from .db import transaction
 from .llm import ACT_ALL, DECIDE_SYSTEM_PROMPT, REPLY_SYSTEM_PROMPT
@@ -36,9 +38,12 @@ class RecordingMemory(MemoryManager):
 
 
 class TurnService:
-    def __init__(self, root: Path | str, llm: Any = None) -> None:
+    def __init__(self, root: Path | str, llm: Any = None, clock: Clock | None = None) -> None:
         self.repo = Repository(root)
         self.llm = llm
+        self.clock = clock or Clock()
+        self.context = ContextBuilder(self.repo, self.clock)
+        self.maintenance = Maintenance(self.repo, self.clock)
         # 旧 JSON 需要显式导入，不能悄悄启动一份空档案。
         with transaction(self.repo.path, write=False) as db:
             imported = db.execute("SELECT 1 FROM imports LIMIT 1").fetchone()
@@ -78,7 +83,7 @@ class TurnService:
                        (turn_id, request_id, fingerprint, conversation_id, command, stamp, time.time() + 900))
             seq = db.execute("SELECT coalesce(max(seq),0)+1 FROM messages WHERE conversation_id=?", (conversation_id,)).fetchone()[0]
             profile = self.repo.profile(db)
-            day = datetime.now(ZoneInfo(profile["timezone"])).date().isoformat()
+            day = self.clock.day(profile["timezone"]).isoformat()
             db.execute("INSERT INTO messages VALUES (?,?,?,?,?,?,?,?,0)", (uid("msg"), conversation_id, seq, turn_id, "user", text, stamp, day))
         return turn_id, True
 
@@ -106,7 +111,7 @@ class TurnService:
                     for entry in self.repo.memories(db, "active"):
                         memory.long.items.append(MemoryItem.from_dict(entry))
                     db.execute("UPDATE turns SET status='analyzing',base_revision=? WHERE id=?", (revision, turn_id))
-                business_day = datetime.now(ZoneInfo(profile["timezone"])).date()
+                business_day = self.clock.day(profile["timezone"])
                 def budget(day: date) -> int:
                     candidate = budget_candidate(text, business_day, source) if command == "chat" else None
                     with transaction(self.repo.path, write=False) as db:
@@ -122,6 +127,7 @@ class TurnService:
                 planner = StudyPlanner(memory, goals, items, reviews, budget_for_day=budget, business_day=business_day)
                 planner.reporter = lambda step: emit("step", vars(step))
                 emit("status", {"text": "正在读取学习档案…"})
+                planner.context_source_ids = []
                 facts = self.analyze(planner, text, command, payload or {}, turn_id)
                 with transaction(self.repo.path) as db:
                     current = self.repo.profile(db)
@@ -139,6 +145,7 @@ class TurnService:
                         db.execute("DELETE FROM constraints")
                     self.repo.save_domain(db, planner.goals, planner.items, planner.reviews)
                     self.save_memory(db, memory, source, text, command, payload or {}, business_day)
+                    db.executemany("INSERT OR IGNORE INTO artifact_sources VALUES ('turn',?,?)", [(turn_id, sid) for sid in planner.context_source_ids + [source]])
                     db.execute("UPDATE profile SET state_revision=state_revision+1")
                     db.execute("UPDATE turns SET status='committed',facts=?,state_revision=? WHERE id=?", (facts, revision + 1, turn_id))
                 emit("step", {"phase": "提交", "title": "变更已保存", "ok": True, "detail": f"版本 {revision+1}"})
@@ -146,7 +153,10 @@ class TurnService:
                 if self.llm is not None and command == "chat":
                     try:
                         chunks = []
-                        messages = [{"role": "system", "content": REPLY_SYSTEM_PROMPT}, {"role": "user", "content": facts}]
+                        reply_context = self.context.build(turn_id, "reply", facts)
+                        messages = reply_context.messages
+                        with transaction(self.repo.path) as db:
+                            db.executemany("INSERT OR IGNORE INTO artifact_sources VALUES ('turn',?,?)", [(turn_id, sid) for sid in reply_context.source_ids])
                         for delta in self.llm.stream(messages):
                             if delta.text:
                                 chunks.append(delta.text)
@@ -157,7 +167,15 @@ class TurnService:
                 with transaction(self.repo.path) as db:
                     db.execute("UPDATE turns SET status='completed',reply=?,degraded=?,lease_until=0 WHERE id=?", (reply, int(degraded), turn_id))
                     seq = db.execute("SELECT coalesce(max(seq),0)+1 FROM messages WHERE conversation_id=?", (row["conversation_id"],)).fetchone()[0]
-                    db.execute("INSERT INTO messages VALUES (?,?,?,?,?,?,?,?,0)", (uid("msg"), row["conversation_id"], seq, turn_id, "assistant", reply, now_iso(), datetime.now(ZoneInfo(profile["timezone"])).date().isoformat()))
+                    assistant_id = uid("msg")
+                    db.execute("INSERT INTO messages VALUES (?,?,?,?,?,?,?,?,0)", (assistant_id, row["conversation_id"], seq, turn_id, "assistant", reply, now_iso(), self.clock.day(profile["timezone"]).isoformat()))
+                    db.execute("INSERT INTO artifact_sources VALUES ('message',?,?)", (assistant_id, turn_id))
+                try:
+                    self.maintenance.schedule(row["conversation_id"])
+                    self.maintenance.run_once()
+                except Exception:
+                    # 派生内容失败不影响已提交业务；作业有持久状态可重试。
+                    pass
                 break
         except ServiceError as exc:
             with transaction(self.repo.path) as db:
@@ -194,8 +212,10 @@ class TurnService:
             raise ServiceError("INVALID_COMMAND", "未知操作", 422)
         decision = None
         if self.llm:
+            context = self.context.build(turn_id, "decision")
+            planner.context_source_ids = context.source_ids
             try:
-                decision = self.llm.complete_json([{"role": "system", "content": DECIDE_SYSTEM_PROMPT}, {"role": "user", "content": text}])
+                decision = self.llm.complete_json(context.messages)
             except Exception:
                 pass
         if isinstance(decision, dict) and decision.get("action") in ACT_ALL:

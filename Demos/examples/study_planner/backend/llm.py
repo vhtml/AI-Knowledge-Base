@@ -108,7 +108,7 @@ class LLMClient:
         base_url: str | None = None,
         api_key: str | None = None,
         temperature: float = 0.7,
-        max_tokens: int | None = None,
+        max_tokens: int | None = 1500,
         timeout: float = 120.0,
     ) -> None:
         from openai import OpenAI

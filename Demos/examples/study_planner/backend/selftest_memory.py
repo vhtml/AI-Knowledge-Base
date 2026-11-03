@@ -7,6 +7,9 @@ from datetime import date
 from .db import transaction
 from .memory_policy import budget_candidate, resolve_daily_minutes
 from .turn_service import TurnService
+from .context import Clock, ContextBuilder, count_tokens
+from .memory_types import ServiceError
+from datetime import datetime, timezone
 
 
 class MemoryTests(unittest.TestCase):
@@ -40,6 +43,29 @@ class MemoryTests(unittest.TestCase):
         candidate = budget_candidate('今天只有15分钟', date(2026,11,4), 's')
         self.assertEqual(candidate.scope, 'date:2026-11-04')
         self.assertEqual(candidate.value, 15)
+
+    def test_context_budget_and_pending_history(self) -> None:
+        self.service.submit('default', 'done', '我想学 Python')
+        self.service.accept('default', 'other', '不应进入其他轮次的待处理秘密')
+        tid, _ = self.service.accept('default', 'current', '接下来呢')
+        context = self.service.context.build(tid, 'decision')
+        self.assertLessEqual(count_tokens(context.messages), 6000)
+        self.assertIn('Python', str(context.messages))
+        self.assertNotIn('待处理秘密', str(context.messages))
+        long_id, _ = self.service.accept('default', 'large', '长' * 3000)
+        with self.assertRaises(ServiceError):
+            self.service.context.build(long_id, 'decision')
+        with self.assertRaises(ValueError):
+            ContextBuilder(self.service.repo, input_budget=7000)
+
+    def test_summary_preserves_raw_history_and_clock(self) -> None:
+        for index in range(8):
+            self.service.submit('default', f'history-{index}', '随手记录' + ('内容' * 200))
+        with transaction(self.service.repo.path, write=False) as db:
+            self.assertEqual(db.execute('SELECT count(*) FROM messages').fetchone()[0], 16)
+            self.assertGreater(db.execute('SELECT count(*) FROM summaries WHERE valid=1').fetchone()[0], 0)
+        clock = Clock(lambda: datetime(2030, 1, 1, 20, tzinfo=timezone.utc))
+        self.assertEqual(clock.day('Asia/Shanghai'), date(2030,1,2))
 
 
 if __name__ == '__main__':
