@@ -125,13 +125,22 @@ class StudyPlanner:
         self.items: list[PlanItem] = list(items or [])
         self.reviews: list[Review] = list(reviews or [])
         self.reporter = reporter
+        # 本次请求临时生效的 reporter，见 _use_reporter
+        self._scoped_reporter: Reporter | None = None
 
     # ------------------------------------------------------------
     # 主入口
     # ------------------------------------------------------------
 
-    def handle(self, user_text: str) -> Turn:
-        """处理一轮用户输入。"""
+    def handle(self, user_text: str, reporter: Reporter | None = None) -> Turn:
+        """处理一轮用户输入。
+
+        参数：
+            user_text 用户这轮说的话
+            reporter  可选的每请求回调，收到每一条留痕。
+                      传了就覆盖实例级 reporter——Web 端做 SSE 时
+                      每个请求需要独立的回调，不能共用实例上的那个。
+        """
 
         intent = detect_intent(user_text)
         steps: list[StepRecord] = []
@@ -139,31 +148,26 @@ class StudyPlanner:
 
         # 1. 先召回——后面的每一步都要用到
         bundle = self.memory.recall(user_text)
-        self._record(steps, StepRecord("召回", "记忆检索", ok=True, detail=self._describe(bundle)))
-        turn.memories_used = [hit.item.content for hit in bundle.hits]
 
         # 记录写入前后的记忆条数，用来如实报告"这一轮写了什么"
         short_before = len(self.memory.short)
         long_before = len(self.memory.long)
 
-        if intent == INTENT_GOAL:
-            reply = self._handle_goal(user_text, bundle, steps)
-        elif intent == INTENT_PLAN:
-            reply = self._handle_plan(user_text, bundle, steps)
-        elif intent == INTENT_REVIEW:
-            reply = self._handle_review(bundle, steps)
-        elif intent == INTENT_DONE:
-            reply = self._handle_done(user_text, steps)
-        elif intent == INTENT_QUERY:
-            reply = self._handle_query(user_text, bundle, steps)
-        else:
-            reply = self._handle_chat(user_text, bundle, steps)
+        # 本次请求的 reporter 临时接管留痕上报
+        previous_reporter = self._use_reporter(reporter)
+
+        try:
+            reply = self._run_intent(intent, user_text, bundle, steps, turn)
+
+            # 时间预算这类陈述是长期约束，要能影响之后的每一次排期。
+            # 必须在 reporter 作用域内执行——放在外面的话，
+            # "时间预算已记下"这条留痕不会推给正在等待的客户端。
+            self._capture_budget(user_text, steps)
+        finally:
+            self._scoped_reporter = previous_reporter
 
         turn.reply = reply
         turn.steps = steps
-
-        # 1.5 时间预算这类陈述是长期约束，要能影响之后的每一次排期
-        self._capture_budget(user_text, steps)
 
         # 2. 回写留痕：这一轮实际动了哪块记忆
         short_added = len(self.memory.short) - short_before
@@ -193,6 +197,40 @@ class StudyPlanner:
 
         return turn
 
+    def _run_intent(
+        self,
+        intent: str,
+        user_text: str,
+        bundle: MemoryBundle,
+        steps: list[StepRecord],
+        turn: Turn,
+    ) -> str:
+        """按意图分发，返回本轮的回答文本。
+
+        召回和计数在 handle() 里做，这里只负责分发——
+        拆出来是为了让 handle() 的 try/finally 只包住业务执行。
+        """
+
+        self._record(
+            steps, StepRecord("召回", "记忆检索", ok=True, detail=self._describe(bundle))
+        )
+        turn.memories_used = [hit.item.content for hit in bundle.hits]
+
+        if intent == INTENT_GOAL:
+            reply = self._handle_goal(user_text, bundle, steps)
+        elif intent == INTENT_PLAN:
+            reply = self._handle_plan(user_text, bundle, steps)
+        elif intent == INTENT_REVIEW:
+            reply = self._handle_review(bundle, steps)
+        elif intent == INTENT_DONE:
+            reply = self._handle_done(user_text, steps)
+        elif intent == INTENT_QUERY:
+            reply = self._handle_query(user_text, bundle, steps)
+        else:
+            reply = self._handle_chat(user_text, bundle, steps)
+
+        return reply
+
     # ------------------------------------------------------------
     # 各意图的处理
     # ------------------------------------------------------------
@@ -201,16 +239,35 @@ class StudyPlanner:
         """记录一个新目标。
 
         目标本身直接进长期记忆并钉住——它不该随当天工作区一起被清掉。
+
+        同一个目标重复说（标题和日期相同 → id 相同）应该**更新**而不是追加，
+        否则列表里会出现两条一模一样的目标。
         """
 
         title = self._clean_title(text)
-        goal = Goal(
-            id=stable_id("g", title, today_str()),
-            title=title,
-            deadline=self._guess_deadline(text),
-            tags=self._extract_tags(text),
-        )
-        self.goals.append(goal)
+        deadline = self._guess_deadline(text)
+        tags = self._extract_tags(text)
+        goal_id = stable_id("g", title, today_str())
+
+        existing = next((item for item in self.goals if item.id == goal_id), None)
+
+        if existing is not None:
+            # 更新已有目标：补上这次给出的信息，没给的不覆盖
+            existing.title = title
+
+            if deadline:
+                existing.deadline = deadline
+
+            if tags:
+                existing.tags = tags
+
+            goal = existing
+            action = "目标已更新"
+
+        else:
+            goal = Goal(id=goal_id, title=title, deadline=deadline, tags=tags)
+            self.goals.append(goal)
+            action = "目标已记录"
 
         self.memory.promote(
             f"学习目标：{title}",
@@ -220,7 +277,7 @@ class StudyPlanner:
             tags=goal.tags,
         )
 
-        self._record(steps, StepRecord("记录目标", goal.title, ok=True, detail=goal.id))
+        self._record(steps, StepRecord(action, goal.title, ok=True, detail=goal.id))
         self._record(steps, StepRecord("长期记忆", "目标已入库", ok=True, detail="目标钉住，不随工作区清空"))
 
         lines = [f"记下了：{goal.title}"]
@@ -545,8 +602,22 @@ class StudyPlanner:
     def _record(self, steps: list[StepRecord], step: StepRecord) -> None:
         steps.append(step)
 
-        if self.reporter is not None:
-            self.reporter(step)
+        reporter = self._scoped_reporter or self.reporter
+
+        if reporter is not None:
+            reporter(step)
+
+    def _use_reporter(self, reporter: Reporter | None) -> "Reporter | None":
+        """临时把 reporter 换成本次请求的，返回原值供还原。
+
+        用作用域切换而不是给每个处理函数加参数：处理函数有五个，
+        加参数会一路传染到签名里，而它们内部并不关心谁在听。
+        """
+
+        previous = self._scoped_reporter
+        self._scoped_reporter = reporter
+
+        return previous
 
     # ------------------------------------------------------------
     # 跨天与持久化辅助
