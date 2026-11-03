@@ -134,7 +134,10 @@ watch(
             </li>
           </ul>
 
-          <div class="bubble bubble--typing">
+          <div v-if="store.liveText" class="bubble bubble--assistant bubble--live">
+            <p class="bubble-text">{{ store.liveText }}</p>
+          </div>
+          <div v-else class="bubble bubble--typing">
             <span class="typing-dots" aria-hidden="true"><i></i><i></i><i></i></span>
             <span class="typing-text">{{ store.liveStatus || '正在处理…' }}</span>
           </div>
@@ -409,6 +412,28 @@ watch(
   display: inline-flex;
   align-items: center;
   gap: 10px;
+}
+
+/* 模型正在逐字吐出来的正文：末尾加一个闪烁的光标 */
+.bubble--live {
+  position: relative;
+}
+
+.bubble--live .bubble-text::after {
+  content: '';
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background: var(--primary);
+  animation: caret-blink 1s steps(2, start) infinite;
+}
+
+@keyframes caret-blink {
+  to {
+    visibility: hidden;
+  }
 }
 
 .typing-dots {

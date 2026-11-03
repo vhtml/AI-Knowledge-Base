@@ -9,14 +9,36 @@
 4. **回写**：把新学到的写进短期记忆，值得长期保留的晋升到长期档案。
 
 每一步都留痕（StepRecord），终端上能直接看到"这轮动了哪块记忆"。
+
+两种运行模式：
+
+- **规则模式**（没有模型客户端时，命令行入口走这条）：意图靠关键字判定，
+  计划靠模板拆解，回复是写死的字符串。离线可跑，行为可预测。
+- **模型模式**（注入了模型客户端时，Web 工作台走这条）：模型读状态和记忆，
+  决定这轮做什么并给出要落库的内容；代码负责把决策落到状态上，
+  再让模型用自然语言把结果讲出来。
+
+两种模式共用同一套状态与记忆内核，所以记忆的行为约定完全一致。
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date
-from typing import Callable
+from datetime import date, timedelta
+from typing import Any, Callable
 
+from .llm import (
+    ACT_ALL,
+    ACT_ANSWER,
+    ACT_DONE,
+    ACT_GOAL,
+    ACT_PLAN,
+    ACT_QUERY,
+    ACT_REVIEW,
+    DECIDE_SYSTEM_PROMPT,
+    REPLY_SYSTEM_PROMPT,
+    LLMClient,
+)
 from .memory import MemoryBundle, MemoryManager
 from .models import (
     CATEGORY_GOAL,
@@ -40,6 +62,10 @@ from .planner import (
 from .review import apply_review_findings, run_review
 
 Reporter = Callable[["StepRecord"], None]
+DeltaHandler = Callable[[str], None]
+
+# 模型排的计划最多铺到多少天之后——防止模型给出离谱的远期日期
+MAX_PLAN_DAYS = 60
 
 # 意图关键字。命中哪个就走哪条路。
 INTENT_GOAL = "goal"
@@ -119,12 +145,15 @@ class StudyPlanner:
         items: list[PlanItem] | None = None,
         reviews: list[Review] | None = None,
         reporter: Reporter | None = None,
+        llm: LLMClient | None = None,
     ) -> None:
         self.memory = memory
         self.goals: list[Goal] = list(goals or [])
         self.items: list[PlanItem] = list(items or [])
         self.reviews: list[Review] = list(reviews or [])
         self.reporter = reporter
+        # 有模型客户端就走模型模式，没有就走规则模式
+        self.llm = llm
         # 本次请求临时生效的 reporter，见 _use_reporter
         self._scoped_reporter: Reporter | None = None
 
@@ -132,7 +161,12 @@ class StudyPlanner:
     # 主入口
     # ------------------------------------------------------------
 
-    def handle(self, user_text: str, reporter: Reporter | None = None) -> Turn:
+    def handle(
+        self,
+        user_text: str,
+        reporter: Reporter | None = None,
+        on_delta: DeltaHandler | None = None,
+    ) -> Turn:
         """处理一轮用户输入。
 
         参数：
@@ -140,6 +174,8 @@ class StudyPlanner:
             reporter  可选的每请求回调，收到每一条留痕。
                       传了就覆盖实例级 reporter——Web 端做 SSE 时
                       每个请求需要独立的回调，不能共用实例上的那个。
+            on_delta  可选的逐段回调，收到模型回复的文本增量。
+                      模型模式下用来做流式推送。
         """
 
         intent = detect_intent(user_text)
@@ -157,12 +193,27 @@ class StudyPlanner:
         previous_reporter = self._use_reporter(reporter)
 
         try:
-            reply = self._run_intent(intent, user_text, bundle, steps, turn)
+            if self.llm is not None:
+                decision = self._model_decide(user_text, bundle, steps)
 
-            # 时间预算这类陈述是长期约束，要能影响之后的每一次排期。
-            # 必须在 reporter 作用域内执行——放在外面的话，
-            # "时间预算已记下"这条留痕不会推给正在等待的客户端。
-            self._capture_budget(user_text, steps)
+                if decision is None:
+                    # 模型调不通，退回规则模式：服务不能因为模型挂了就不可用
+                    reply = self._run_intent(intent, user_text, bundle, steps, turn)
+                    self._capture_budget(user_text, steps)
+                else:
+                    facts = self._apply_model_decision(
+                        decision, user_text, bundle, steps, turn
+                    )
+                    reply = self._model_reply(
+                        user_text, bundle, facts, steps, on_delta
+                    )
+            else:
+                reply = self._run_intent(intent, user_text, bundle, steps, turn)
+
+                # 时间预算这类陈述是长期约束，要能影响之后的每一次排期。
+                # 必须在 reporter 作用域内执行——放在外面的话，
+                # "时间预算已记下"这条留痕不会推给正在等待的客户端。
+                self._capture_budget(user_text, steps)
         finally:
             self._scoped_reporter = previous_reporter
 
@@ -239,14 +290,36 @@ class StudyPlanner:
         """记录一个新目标。
 
         目标本身直接进长期记忆并钉住——它不该随当天工作区一起被清掉。
-
-        同一个目标重复说（标题和日期相同 → id 相同）应该**更新**而不是追加，
-        否则列表里会出现两条一模一样的目标。
         """
 
         title = self._clean_title(text)
         deadline = self._guess_deadline(text)
         tags = self._extract_tags(text)
+        goal = self._record_goal(title, deadline, tags, steps)
+
+        lines = [f"记下了：{goal.title}"]
+
+        if goal.deadline:
+            lines.append(f"截止日期：{goal.deadline}")
+
+        lines.append("要我现在生成一份学习计划吗？")
+
+        return "\n".join(lines)
+
+    def _record_goal(
+        self,
+        title: str,
+        deadline: str,
+        tags: list[str],
+        steps: list[StepRecord],
+    ) -> Goal:
+        """写入或更新一个目标，并把它钉进长期记忆。
+
+        规则模式和模型模式共用这一段：同一个目标重复说
+        （标题和日期相同 → id 相同）应该**更新**而不是追加，
+        否则列表里会出现两条一模一样的目标。
+        """
+
         goal_id = stable_id("g", title, today_str())
 
         existing = next((item for item in self.goals if item.id == goal_id), None)
@@ -280,14 +353,7 @@ class StudyPlanner:
         self._record(steps, StepRecord(action, goal.title, ok=True, detail=goal.id))
         self._record(steps, StepRecord("长期记忆", "目标已入库", ok=True, detail="目标钉住，不随工作区清空"))
 
-        lines = [f"记下了：{goal.title}"]
-
-        if goal.deadline:
-            lines.append(f"截止日期：{goal.deadline}")
-
-        lines.append("要我现在生成一份学习计划吗？")
-
-        return "\n".join(lines)
+        return goal
 
     def _handle_plan(self, text: str, bundle: MemoryBundle, steps: list[StepRecord]) -> str:
         """生成计划。
@@ -330,6 +396,17 @@ class StudyPlanner:
     def _handle_review(self, bundle: MemoryBundle, steps: list[StepRecord]) -> str:
         """跑每日复盘，并把结论沉淀进长期记忆。"""
 
+        outcome = self._run_review(steps)
+
+        return outcome.render()
+
+    def _run_review(self, steps: list[StepRecord]):
+        """复盘的可执行部分：对账、算完成率、沉淀结论。
+
+        模型模式也走这一段：完成率是**数据**，不该让模型自己编；
+        模型只负责给出定性的结论（亮点、卡点、下一步）。
+        """
+
         outcome = run_review(self.items, self.reviews, self.goals)
         self.reviews.append(outcome.review)
 
@@ -347,7 +424,7 @@ class StudyPlanner:
             StepRecord("长期记忆", "沉淀结论", ok=True, detail=f"{len(applied)} 条"),
         )
 
-        return outcome.render()
+        return outcome
 
     def _handle_done(self, text: str, steps: list[StepRecord]) -> str:
         """标记一条任务完成。
@@ -356,11 +433,23 @@ class StudyPlanner:
         因为大部分时候人只记得"我刚做完那件事"。
         """
 
+        target = self._mark_next_done(steps)
+
+        if target is None:
+            return "没有待办任务了，可以去复盘或者生成新计划。"
+
+        done, total = progress_of(self.items)
+
+        return f"完成「{target.title}」。当前进度 {done}/{total}。"
+
+    def _mark_next_done(self, steps: list[StepRecord]) -> PlanItem | None:
+        """把今天的下一件事标记完成，返回被标记的那条。"""
+
         target = next_undone(self.items)
 
         if target is None:
             self._record(steps, StepRecord("标记完成", "没有待办", ok=False, detail="所有任务都已完成"))
-            return "没有待办任务了，可以去复盘或者生成新计划。"
+            return None
 
         target.done = True
         self.memory.remember(f"完成了「{target.title}」", CATEGORY_NOTE, importance=3)
@@ -368,10 +457,17 @@ class StudyPlanner:
         done, total = progress_of(self.items)
         self._record(steps, StepRecord("标记完成", target.title, ok=True, detail=f"进度 {done}/{total}"))
 
-        return f"完成「{target.title}」。当前进度 {done}/{total}。"
+        return target
 
     def _handle_query(self, text: str, bundle: MemoryBundle, steps: list[StepRecord]) -> str:
         """查询：进度 + 相关记忆。"""
+
+        self._record(steps, StepRecord("查询", "进度与记忆", ok=True, detail=f"{len(bundle.hits)} 条命中"))
+
+        return self._render_query(bundle)
+
+    def _render_query(self, bundle: MemoryBundle) -> str:
+        """把当前进度和召回的记忆拼成可读文本。"""
 
         lines: list[str] = []
         done, total = progress_of(self.items)
@@ -402,8 +498,6 @@ class StudyPlanner:
         if not lines:
             lines.append("还没有记录。试试「我想学 Python」或者「生成计划」。")
 
-        self._record(steps, StepRecord("查询", "进度与记忆", ok=True, detail=f"{len(bundle.hits)} 条命中"))
-
         return "\n".join(lines)
 
     def _handle_chat(self, text: str, bundle: MemoryBundle, steps: list[StepRecord]) -> str:
@@ -416,6 +510,510 @@ class StudyPlanner:
             return "记下了。顺便一提，我记得这些：\n" + bundle.render()
 
         return "记下了。还有什么想安排的？"
+
+    # ------------------------------------------------------------
+    # 模型模式
+    #
+    # 两步走：先让模型给出**结构化决策**，代码把决策落到状态上，
+    # 再让模型用自然语言把结果讲出来。
+    #
+    # 分两步而不是一步到位，是为了让状态永远是真的：
+    # 模型只负责"想"（决定做什么、说什么），"做"（改状态、落记忆）
+    # 仍然由代码执行。留痕来自代码，也就一定是真的。
+    # ------------------------------------------------------------
+
+    def _model_decide(
+        self, user_text: str, bundle: MemoryBundle, steps: list[StepRecord]
+    ) -> dict[str, Any] | None:
+        """问模型这轮要做什么。
+
+        返回 None 表示模型调不通，调用方据此退回规则模式——
+        服务不能因为模型挂了就整个不可用。
+        """
+
+        prompt = (
+            f"{self._state_snapshot()}\n\n"
+            f"【本轮召回】\n{bundle.render()}\n\n"
+            f"【用户这轮说的话】\n{user_text}\n\n"
+            "请给出这一轮的决策 JSON。"
+        )
+
+        messages = [
+            {"role": "system", "content": DECIDE_SYSTEM_PROMPT},
+            {"role": "user", "content": prompt},
+        ]
+
+        try:
+            decision = self.llm.complete_json(messages)
+        except Exception as exc:
+            self._record(
+                steps,
+                StepRecord("模型", "决策调用失败", ok=False, detail=type(exc).__name__),
+            )
+            return None
+
+        if not decision:
+            self._record(steps, StepRecord("模型", "决策无效", ok=False, detail="模型没给出可解析的 JSON"))
+            return None
+
+        action = str(decision.get("action") or "").strip()
+        label = action if action in ACT_ALL else "无法识别的动作"
+
+        self._record(steps, StepRecord("决策", "模型决策", ok=True, detail=label))
+
+        return decision
+
+    def _apply_model_decision(
+        self,
+        decision: dict[str, Any],
+        user_text: str,
+        bundle: MemoryBundle,
+        steps: list[StepRecord],
+        turn: Turn,
+    ) -> str:
+        """把模型的决策落到状态上，返回一段「本轮已发生」的描述。"""
+
+        action = str(decision.get("action") or "").strip()
+
+        if action not in ACT_ALL:
+            action = ACT_ANSWER
+
+        turn.intent = action
+        facts: list[str] = []
+
+        if action == ACT_GOAL:
+            facts.append(self._apply_model_goal(decision.get("goal"), user_text, steps))
+        elif action == ACT_PLAN:
+            facts.append(
+                self._apply_model_plan(
+                    decision.get("plan"), decision.get("goal"), user_text, bundle, steps
+                )
+            )
+        elif action == ACT_DONE:
+            facts.append(self._apply_model_done(decision.get("done"), steps))
+        elif action == ACT_REVIEW:
+            facts.append(self._apply_model_review(decision.get("review"), steps))
+        elif action == ACT_QUERY:
+            self._record(
+                steps,
+                StepRecord("查询", "进度与记忆", ok=True, detail=f"{len(bundle.hits)} 条命中"),
+            )
+            facts.append(self._render_query(bundle))
+        else:
+            facts.append("这轮只是对话，没有改动任何状态。")
+
+        facts.extend(self._apply_model_memory(decision.get("memory"), steps))
+
+        return "\n".join(item for item in facts if item)
+
+    def _apply_model_goal(
+        self, goal_raw: Any, user_text: str, steps: list[StepRecord]
+    ) -> str:
+        """落目标：模型给标题/截止/标签，代码负责去重与钉进长期记忆。"""
+
+        raw = goal_raw if isinstance(goal_raw, dict) else {}
+        title = str(raw.get("title") or "").strip() or self._clean_title(user_text)
+        deadline = str(raw.get("deadline") or "").strip()
+        tags = [str(tag).strip() for tag in (raw.get("tags") or []) if str(tag).strip()]
+
+        # 模型有时会把"我每天只有 30 分钟"当成目标记下来。
+        # 那不是目标，是**持续生效的约束**——记错地方的话，
+        # 它就变成一条要在排期时被"扫档案"才能捡起来的普通目标。
+        minutes = StudyPlanner._parse_duration(title)
+
+        if minutes is not None:
+            self._record(
+                steps,
+                StepRecord("目标已记录", "改记为时间预算", ok=True, detail=f"每天 {minutes} 分钟"),
+            )
+            self.memory.promote(
+                f"每天可学习时间：{minutes} 分钟",
+                CATEGORY_PREFERENCE,
+                "模型误记为目标，按时间预算归位",
+                importance=5,
+            )
+            return f"记下了你的时间预算：每天 {minutes} 分钟。"
+
+        goal = self._record_goal(title, deadline, tags, steps)
+
+        return f"已记录目标「{goal.title}」。"
+
+    def _apply_model_plan(
+        self,
+        plan_raw: Any,
+        goal_raw: Any,
+        user_text: str,
+        bundle: MemoryBundle,
+        steps: list[StepRecord],
+    ) -> str:
+        """落计划：模型给任务清单，代码按时间预算兜底裁剪。"""
+
+        goal = self._pick_goal(user_text)
+
+        raw_goal = goal_raw if isinstance(goal_raw, dict) else {}
+        wanted = str(raw_goal.get("title") or "").strip()
+
+        if wanted:
+            matched = next(
+                (item for item in self.goals if item.title == wanted or wanted in item.title),
+                None,
+            )
+            if matched is not None:
+                goal = matched
+
+        if goal is None:
+            self._record(steps, StepRecord("生成计划", "没有目标", ok=False, detail="请先记录一个目标"))
+            return "现在还没有学习目标，先告诉我想学什么。"
+
+        minutes, source = self._pick_daily_minutes(bundle)
+        entries = plan_raw if isinstance(plan_raw, list) else []
+        draft, dropped = self._build_model_items(entries, goal, minutes)
+
+        if not draft:
+            # 模型给的计划一条都用不上（日期不对、标题为空……）。
+            # 这时候退回模板重排一份——空计划对用户没有任何帮助，
+            # 留痕里会写明这次是模板兜底，不会假装是模型排的。
+            self._record(
+                steps,
+                StepRecord("生成计划", "模型计划不可用", ok=False, detail="按模板重排"),
+            )
+            fallback = generate_plan(goal, daily_minutes=minutes)
+            draft = fallback.items
+
+        existing = {item.id for item in self.items}
+        fresh = [item for item in draft if item.id not in existing]
+        self.items.extend(fresh)
+
+        # 计划本身进短期记忆：它是"今天要做什么"的依据
+        self.memory.remember(
+            f"已为「{goal.title}」生成计划，{len(fresh)} 条日任务，每日 {minutes} 分钟",
+            CATEGORY_NOTE,
+            importance=4,
+            tags=goal.tags,
+        )
+
+        self._record(
+            steps,
+            StepRecord("生成计划", goal.title, ok=True, detail=f"每日 {minutes} 分钟（{source}）"),
+        )
+        self._record(
+            steps,
+            StepRecord("排期依据", source, ok=True, detail=f"每日 {minutes} 分钟"),
+        )
+
+        if dropped:
+            self._record(
+                steps,
+                StepRecord("排期校验", "超出预算已裁剪", ok=True, detail=f"{dropped} 条"),
+            )
+
+        return f"已为「{goal.title}」排出 {len(fresh)} 条日任务，每日 {minutes} 分钟（{source}）。"
+
+    def _build_model_items(
+        self, entries: list[Any], goal: Goal, daily_minutes: int
+    ) -> tuple[list[PlanItem], int]:
+        """把模型给的清单落成待办，并把超出预算的部分裁掉。
+
+        模型不知道也不该管"每天最多多少分钟"——那是长期记忆里的约束，
+        由代码兜底裁剪，不然模型一发挥就能把排期撑爆。
+        """
+
+        items: list[PlanItem] = []
+        dropped = 0
+        used: dict[str, int] = {}
+        today = date.today()
+        last_day = today + timedelta(days=MAX_PLAN_DAYS)
+
+        for entry in entries:
+            if not isinstance(entry, dict):
+                dropped += 1
+                continue
+
+            title = str(entry.get("title") or "").strip()
+
+            if not title:
+                dropped += 1
+                continue
+
+            try:
+                day = self._parse_plan_day(entry.get("date"))
+            except ValueError:
+                dropped += 1
+                continue
+
+            if day < today or day > last_day:
+                dropped += 1
+                continue
+
+            spent = used.get(day.isoformat(), 0)
+            room = daily_minutes - spent
+
+            if room < 15:
+                dropped += 1
+                continue
+
+            try:
+                minutes = int(entry.get("minutes") or 0)
+            except (TypeError, ValueError):
+                minutes = 0
+
+            minutes = max(15, min(minutes or daily_minutes, room))
+            used[day.isoformat()] = spent + minutes
+
+            items.append(
+                PlanItem(
+                    id=stable_id("p", goal.id, day.isoformat(), title),
+                    goal_id=goal.id,
+                    title=title,
+                    day=day.isoformat(),
+                    minutes=minutes,
+                    milestone=bool(entry.get("milestone")),
+                )
+            )
+
+        return items, dropped
+
+    @staticmethod
+    def _parse_plan_day(raw: Any) -> date:
+        """解析模型给的日期。
+
+        模型大概率会照着 YYYY-MM-DD 写，但偶尔会写成 "2026/11/05"
+        甚至 "11月5日"。这里都认——日期解析失败就等于把整份计划丢掉，
+        代价太大，不值得为格式较真。
+        """
+
+        text = str(raw or "").strip().replace("/", "-").replace(".", "-")
+
+        if not text:
+            raise ValueError("空日期")
+
+        try:
+            return date.fromisoformat(text)
+        except ValueError:
+            pass
+
+        # "11-05" 这种缺年份的，按今年算
+        parts = text.split("-")
+
+        if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
+            today = date.today()
+            candidate = date(today.year, int(parts[0]), int(parts[1]))
+
+            if candidate < today:
+                candidate = date(today.year + 1, int(parts[0]), int(parts[1]))
+
+            return candidate
+
+        raise ValueError(f"无法解析日期：{raw}")
+
+    def _apply_model_done(self, done_raw: Any, steps: list[StepRecord]) -> str:
+        """标记完成：模型指名的就按名字找，没指名就按"今天的下一件事"。"""
+
+        raw = done_raw if isinstance(done_raw, dict) else {}
+        wanted = str(raw.get("title") or "").strip()
+
+        if wanted:
+            matched = next(
+                (item for item in self.items if not item.done and wanted in item.title), None
+            )
+
+            if matched is not None:
+                matched.done = True
+                self.memory.remember(f"完成了「{matched.title}」", CATEGORY_NOTE, importance=3)
+
+                done, total = progress_of(self.items)
+                self._record(
+                    steps,
+                    StepRecord("标记完成", matched.title, ok=True, detail=f"进度 {done}/{total}"),
+                )
+
+                return f"已标记「{matched.title}」完成。"
+
+        target = self._mark_next_done(steps)
+
+        if target is None:
+            return "没有待办任务了。"
+
+        return f"已标记「{target.title}」完成。"
+
+    def _apply_model_review(self, review_raw: Any, steps: list[StepRecord]) -> str:
+        """复盘：完成率由代码算，定性结论由模型给。"""
+
+        outcome = self._run_review(steps)
+        raw = review_raw if isinstance(review_raw, dict) else {}
+
+        highlights = [str(x).strip() for x in (raw.get("highlights") or []) if str(x).strip()]
+        blockers = [str(x).strip() for x in (raw.get("blockers") or []) if str(x).strip()]
+        next_step = str(raw.get("next_step") or "").strip()
+
+        if highlights:
+            outcome.review.highlights = highlights
+
+        if blockers:
+            outcome.review.blockers = blockers
+
+        if next_step:
+            outcome.review.next_step = next_step
+
+        self._record(
+            steps,
+            StepRecord(
+                "复盘结论",
+                "模型归纳",
+                ok=True,
+                detail=f"{len(highlights)} 条亮点 / {len(blockers)} 条卡点",
+            ),
+        )
+
+        return f"复盘完成：{outcome.review.done}/{outcome.review.planned} 条完成。"
+
+    def _apply_model_memory(self, memory_raw: Any, steps: list[StepRecord]) -> list[str]:
+        """把模型判定"值得记住"的内容写进记忆。
+
+        长期记忆仍然只能经 `promote()` 写入——模型只负责判断值不值得记，
+        写入通道不变。这样"什么才算值得记住"这条约束不会被绕过。
+        """
+
+        entries = memory_raw if isinstance(memory_raw, list) else []
+        written: list[str] = []
+
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+
+            text = str(entry.get("text") or "").strip()
+
+            if not text:
+                continue
+
+            category = str(entry.get("category") or CATEGORY_NOTE).strip() or CATEGORY_NOTE
+
+            try:
+                importance = int(entry.get("importance") or 3)
+            except (TypeError, ValueError):
+                importance = 3
+
+            importance = max(1, min(5, importance))
+            promote = bool(entry.get("promote"))
+
+            if promote and category == CATEGORY_PREFERENCE:
+                # 预算这类偏好必须归一化成统一说法：模型换个措辞就会落到
+                # 另一个槽位，档案里会堆出两条互相矛盾的预算。
+                minutes = StudyPlanner._parse_duration(text)
+
+                if minutes is not None:
+                    text = f"每天可学习时间：{minutes} 分钟"
+
+            if promote:
+                self.memory.promote(text, category, "模型判定值得长期保留", importance=importance)
+                written.append(f"长期：{text}")
+            else:
+                self.memory.remember(text, category, importance=importance)
+                written.append(f"短期：{text}")
+
+        if written:
+            self._record(
+                steps,
+                StepRecord("记忆判定", "模型给出的记忆条目", ok=True, detail=f"{len(written)} 条"),
+            )
+
+        return written
+
+    def _model_reply(
+        self,
+        user_text: str,
+        bundle: MemoryBundle,
+        facts: str,
+        steps: list[StepRecord],
+        on_delta: DeltaHandler | None,
+    ) -> str:
+        """让模型把这一轮讲给用户听，逐段吐出来。"""
+
+        prompt = (
+            f"{self._state_snapshot()}\n\n"
+            f"【本轮已发生】\n{facts}\n\n"
+            f"【本轮召回】\n{bundle.render()}\n\n"
+            f"【用户这轮说的话】\n{user_text}"
+        )
+
+        messages = [
+            {"role": "system", "content": REPLY_SYSTEM_PROMPT},
+            {"role": "user", "content": prompt},
+        ]
+
+        chunks: list[str] = []
+
+        try:
+            for delta in self.llm.stream(messages):
+                if not delta.text:
+                    continue
+
+                chunks.append(delta.text)
+
+                if on_delta is not None:
+                    on_delta(delta.text)
+        except Exception as exc:
+            self._record(
+                steps,
+                StepRecord("模型", "回复生成中断", ok=False, detail=type(exc).__name__),
+            )
+
+            if not chunks:
+                # 一段都没吐出来：把事实直接交给用户，好过一片空白
+                return facts
+
+            return "".join(chunks)
+
+        text = "".join(chunks).strip()
+
+        return text or facts
+
+    def _state_snapshot(self) -> str:
+        """把当前状态拍平成一段文本，喂给模型。
+
+        长期档案是**全量**给出去的：预算这类约束必须让模型看得见，
+        否则它只能靠相关性召回——而召回恰恰召不回时间预算。
+        """
+
+        lines = [f"【今天】{date.today().isoformat()}（排计划从这个日期往后排）", "", "【当前目标】"]
+
+        active = [goal for goal in self.goals if goal.status == "active"]
+
+        if active:
+            for goal in active:
+                deadline = f"（截止 {goal.deadline}）" if goal.deadline else ""
+                lines.append(f"- {goal.title}{deadline}")
+        else:
+            lines.append("（无）")
+
+        lines.extend(["", "【今日待办】"])
+        today = self.today_items()
+
+        if today:
+            for item in today:
+                mark = "✓" if item.done else "○"
+                lines.append(f"- {mark} {item.title}（{item.minutes} 分钟）")
+        else:
+            lines.append("（无）")
+
+        lines.extend(["", "【长期档案】"])
+        archived = [item for item in self.memory.long.items if not item.superseded_by]
+
+        if archived:
+            for item in archived:
+                lines.append(f"- {item.content}")
+        else:
+            lines.append("（无）")
+
+        lines.extend(["", "【短期工作区】"])
+
+        if self.memory.short.items:
+            for item in self.memory.short.items:
+                lines.append(f"- {item.content}")
+        else:
+            lines.append("（无）")
+
+        return "\n".join(lines)
 
     # ------------------------------------------------------------
     # 辅助

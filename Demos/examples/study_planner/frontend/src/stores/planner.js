@@ -63,6 +63,8 @@ export const usePlannerStore = defineStore('planner', () => {
   const liveSteps = ref([])
   /** 当前这一轮的阶段提示 */
   const liveStatus = ref('')
+  /** 当前这一轮模型回复的正文（逐段累积，流式显示用） */
+  const liveText = ref('')
   const error = ref('')
   /** 最近一次失败的消息，供"重试"按钮使用 */
   const failedMessage = ref('')
@@ -151,6 +153,7 @@ export const usePlannerStore = defineStore('planner', () => {
     streaming.value = true
     liveSteps.value = []
     liveStatus.value = ''
+    liveText.value = ''
 
     try {
       await streamChat(
@@ -163,6 +166,10 @@ export const usePlannerStore = defineStore('planner', () => {
             liveStatus.value = frame.data.text ?? ''
           } else if (frame.event === 'step') {
             liveSteps.value.push(frame.data)
+          } else if (frame.event === 'delta') {
+            // 模型回复的文本增量：先累积到 liveText 里流式显示，
+            // 最终消息以 reply 事件为准（那是完整正文，权威版本）
+            liveText.value += frame.data.text ?? ''
           } else if (frame.event === 'reply') {
             messages.value.push({
               id: uid(),
@@ -191,6 +198,7 @@ export const usePlannerStore = defineStore('planner', () => {
         streaming.value = false
         liveSteps.value = []
         liveStatus.value = ''
+        liveText.value = ''
         controller = null
       }
     }
@@ -203,6 +211,7 @@ export const usePlannerStore = defineStore('planner', () => {
     streaming.value = false
     liveSteps.value = []
     liveStatus.value = ''
+    liveText.value = ''
   }
 
   /**
@@ -289,6 +298,7 @@ export const usePlannerStore = defineStore('planner', () => {
     streaming,
     liveSteps,
     liveStatus,
+    liveText,
     error,
     failedMessage,
     ready,

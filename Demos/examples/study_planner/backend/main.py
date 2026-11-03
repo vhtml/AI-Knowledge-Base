@@ -32,6 +32,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from .agent import StepRecord, StudyPlanner
+from .llm import build_client_from_env
 from .memory import MemoryManager
 from .models import CATEGORY_GOAL, CATEGORY_NOTE, Goal, PlanItem, Review
 from .storage import Storage
@@ -40,6 +41,23 @@ DEFAULT_DATA_DIR = Path.home() / ".study-planner"
 
 # 数据目录可以用环境变量覆盖，这样开发时不必动真实数据
 DATA_DIR_ENV = "STUDY_PLANNER_DATA_DIR"
+
+
+def _load_dotenv() -> None:
+    """加载 `Demos/.env` 里的模型配置。
+
+    显式按路径找：从 `Demos/examples` 启动时 CWD 找不到，
+    但仓库的约定是 `.env` 统一放 `Demos/` 那一层。
+    """
+
+    from dotenv import load_dotenv
+
+    candidate = Path(__file__).resolve().parents[3] / ".env"
+
+    if candidate.exists():
+        load_dotenv(candidate)
+    else:
+        load_dotenv()
 
 
 # ------------------------------------------------------------
@@ -72,6 +90,7 @@ class SessionStore:
             goals=storage.load_goals(),
             items=storage.load_items(),
             reviews=storage.load_reviews(),
+            llm=build_client_from_env(),
         )
 
         return cls(planner=planner, storage=storage)
@@ -177,14 +196,22 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+_load_dotenv()
+
 session = SessionStore.build(os.getenv(DATA_DIR_ENV) or DEFAULT_DATA_DIR)
 
 
 @app.get("/health")
 def health() -> dict[str, str]:
-    """健康检查。"""
+    """健康检查。
 
-    return {"status": "ok"}
+    顺带报一下模型是否就绪——前端用它显示当前是模型模式还是规则模式。
+    """
+
+    return {
+        "status": "ok",
+        "mode": "model" if session.planner.llm is not None else "rule",
+    }
 
 
 @app.get("/api/state")
@@ -202,9 +229,14 @@ async def chat(body: ChatRequest) -> StreamingResponse:
     推的事件依次是：
     - `status`  阶段提示（"正在召回记忆"这类）
     - `step`    每一条留痕，前端用它渲染"这轮动了哪块记忆"
-    - `reply`   回答正文
+    - `delta`   模型回复的文本增量，一段一段推（模型模式才有）
+    - `reply`   回答正文（完整文本，权威版本）
     - `state`   最新状态快照
     - `error`   出错时的说明
+
+    `delta` 只负责"逐字往外冒"的体感，`reply` 才是完整正文——
+    前端收到 `reply` 时用完整文本覆盖已流式显示的内容，
+    这样即使中间丢过一段，最终显示也不会错。
 
     处理逻辑跑在一个工作线程里：Agent 是同步的，
     而 FastAPI 的事件循环不能被同步代码阻塞住。
@@ -212,7 +244,7 @@ async def chat(body: ChatRequest) -> StreamingResponse:
     （宁可少显示一条留痕，也不能让生产端卡死）。
     """
 
-    events: queue.Queue[dict[str, Any] | None] = queue.Queue(maxsize=256)
+    events: queue.Queue[dict[str, Any] | None] = queue.Queue(maxsize=1024)
 
     def report(step: StepRecord) -> None:
         """留痕回调——从工作线程调用。"""
@@ -232,13 +264,25 @@ async def chat(body: ChatRequest) -> StreamingResponse:
         except queue.Full:
             pass
 
+    def on_delta(text: str) -> None:
+        """模型回复的文本增量——从工作线程调用。"""
+
+        try:
+            events.put_nowait({"event": "delta", "data": {"text": text}})
+        except queue.Full:
+            # 丢一段增量只会让"逐字效果"不完整，
+            # 末尾的 reply 事件仍然带着完整正文，前端会覆盖回来
+            pass
+
     def worker() -> None:
         """在工作线程里跑完一轮对话。"""
 
         try:
             with session.lock:
                 events.put_nowait({"event": "status", "data": {"text": "正在召回记忆…"}})
-                turn = session.planner.handle(body.message, reporter=report)
+                turn = session.planner.handle(
+                    body.message, reporter=report, on_delta=on_delta
+                )
                 session.persist()
 
             events.put_nowait({"event": "reply", "data": {"text": turn.reply}})
