@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 from zoneinfo import ZoneInfo
-from datetime import datetime
+from datetime import date, datetime, timedelta
 
 from .agent import StepRecord, StudyPlanner, Turn, detect_intent
 from .db import transaction
@@ -15,6 +15,8 @@ from .llm import ACT_ALL, DECIDE_SYSTEM_PROMPT, REPLY_SYSTEM_PROMPT
 from .memory import MemoryManager
 from .memory_types import OperationResult, ServiceError
 from .models import MemoryItem
+from .memory_types import MemoryCandidate
+from .memory_policy import budget_candidate, resolve_daily_minutes, store_candidate
 from .planner import generate_plan, replace_pending_plan
 from .repositories import Repository, dumps, now_iso, uid
 
@@ -104,7 +106,20 @@ class TurnService:
                     for entry in self.repo.memories(db, "active"):
                         memory.long.items.append(MemoryItem.from_dict(entry))
                     db.execute("UPDATE turns SET status='analyzing',base_revision=? WHERE id=?", (revision, turn_id))
-                planner = StudyPlanner(memory, goals, items, reviews)
+                business_day = datetime.now(ZoneInfo(profile["timezone"])).date()
+                def budget(day: date) -> int:
+                    candidate = budget_candidate(text, business_day, source) if command == "chat" else None
+                    with transaction(self.repo.path, write=False) as db:
+                        if self.repo.profile(db)["budget_status"] == "needs_confirmation" and not (candidate and candidate.status == "active" and candidate.scope == "default"):
+                            return resolve_daily_minutes(db, day)
+                        for scope in (f"date:{day.isoformat()}", "weekend" if day.weekday() >= 5 else "weekday", "default"):
+                            if candidate and candidate.status == "active" and candidate.scope == scope:
+                                return candidate.value
+                            active = db.execute("SELECT value FROM constraints WHERE scope=? AND status='active' AND effective_from<=? AND (effective_to IS NULL OR effective_to>=?)", (scope, day.isoformat(), day.isoformat())).fetchone()
+                            if active:
+                                return active[0]
+                    return 60
+                planner = StudyPlanner(memory, goals, items, reviews, budget_for_day=budget, business_day=business_day)
                 planner.reporter = lambda step: emit("step", vars(step))
                 emit("status", {"text": "正在读取学习档案…"})
                 facts = self.analyze(planner, text, command, payload or {}, turn_id)
@@ -123,7 +138,7 @@ class TurnService:
                         db.execute("DELETE FROM memories")
                         db.execute("DELETE FROM constraints")
                     self.repo.save_domain(db, planner.goals, planner.items, planner.reviews)
-                    self.save_memory(db, memory, source, text)
+                    self.save_memory(db, memory, source, text, command, payload or {}, business_day)
                     db.execute("UPDATE profile SET state_revision=state_revision+1")
                     db.execute("UPDATE turns SET status='committed',facts=?,state_revision=? WHERE id=?", (facts, revision + 1, turn_id))
                 emit("step", {"phase": "提交", "title": "变更已保存", "ok": True, "detail": f"版本 {revision+1}"})
@@ -159,7 +174,7 @@ class TurnService:
         bundle = planner.memory.recall(text)
         if command == "goal":
             goal = planner._record_goal(payload["title"], payload.get("deadline", ""), [], steps)
-            draft = generate_plan(goal, daily_minutes=payload.get("daily_minutes", 60))
+            draft = generate_plan(goal, start=planner.business_day, daily_minutes=payload.get("daily_minutes", 60))
             replace_pending_plan(planner.items, goal.id, draft.items, payload.get("daily_minutes", 60))
             return f"已创建目标「{goal.title}」并排期。"
         if command == "toggle":
@@ -188,15 +203,20 @@ class TurnService:
             facts = planner._apply_model_decision(decision, text, bundle, steps, Turn("", ""))
         else:
             facts = planner._run_intent(detect_intent(text), text, bundle, steps, Turn("", ""))
-        planner._capture_budget(text, steps)
+        candidate = budget_candidate(text, planner.business_day, "analysis")
+        if candidate and candidate.status == "active":
+            planner._capture_budget(text, steps)
         return facts
 
-    def save_memory(self, db: Any, memory: RecordingMemory, source: str, text: str) -> None:
+    def save_memory(self, db: Any, memory: RecordingMemory, source: str, text: str, command: str,
+                    payload: dict[str, Any], day: date) -> None:
+        candidate = budget_candidate(text, day, source) if command == "chat" else None
+        if command == "goal":
+            candidate = MemoryCandidate(f"可学习时间：{payload.get('daily_minutes', 60)} 分钟", "preference", "active", "fact", source, text, "default", payload.get("daily_minutes", 60))
+        if candidate:
+            store_candidate(db, candidate)
         for item in memory.writes:
-            if not item["long"]:
+            if not item["long"] or item["category"] == "preference":
                 continue
-            if db.execute("SELECT 1 FROM memories JOIN memory_sources ON id=memory_id WHERE source_id=? AND content=?", (source, item["content"])).fetchone():
-                continue
-            mid = uid()
-            db.execute("INSERT INTO memories(id,kind,category,content,status,importance,created_at,source_type) VALUES (?,?,?,?,?,?,?,?)", (mid, "experience", item["category"], item["content"], "active", item["importance"], now_iso(), "rule"))
-            db.execute("INSERT INTO memory_sources VALUES (?,?,?,?)", (mid, source, text, "v1"))
+            active = item["category"] == "goal" and item["content"].removeprefix("学习目标：") in text
+            store_candidate(db, MemoryCandidate(item["content"], item["category"], "active" if active else "pending", "experience", source, text))

@@ -147,7 +147,11 @@ class StudyPlanner:
         reviews: list[Review] | None = None,
         reporter: Reporter | None = None,
         llm: LLMClient | None = None,
+        budget_for_day: Callable[[date], int] | None = None,
+        business_day: date | None = None,
     ) -> None:
+        self.budget_for_day = budget_for_day
+        self.business_day = business_day or date.today()
         self.memory = memory
         self.goals: list[Goal] = list(goals or [])
         self.items: list[PlanItem] = list(items or [])
@@ -370,9 +374,9 @@ class StudyPlanner:
             return "现在还没有学习目标。先告诉我你想学什么，比如「我想学 Python 数据分析」。"
 
         minutes, source = self._pick_daily_minutes(bundle)
-        draft = generate_plan(goal, daily_minutes=minutes)
+        draft = generate_plan(goal, start=self.business_day, daily_minutes=minutes, budget_for_day=self.budget_for_day)
 
-        fresh = replace_pending_plan(self.items, goal.id, draft.items, minutes)
+        fresh = replace_pending_plan(self.items, goal.id, draft.items, self.budget_for_day or minutes)
         draft.items = fresh
 
         # 计划本身进短期记忆：它是"今天要做什么"的依据
@@ -407,7 +411,7 @@ class StudyPlanner:
         模型只负责给出定性的结论（亮点、卡点、下一步）。
         """
 
-        outcome = run_review(self.items, self.reviews, self.goals)
+        outcome = run_review(self.items, self.reviews, self.goals, self.business_day.isoformat())
         self.reviews[:] = [review for review in self.reviews if review.day != outcome.review.day]
         self.reviews.append(outcome.review)
 
@@ -678,10 +682,10 @@ class StudyPlanner:
                 steps,
                 StepRecord("生成计划", "模型计划不可用", ok=False, detail="按模板重排"),
             )
-            fallback = generate_plan(goal, daily_minutes=minutes)
+            fallback = generate_plan(goal, start=self.business_day, daily_minutes=minutes, budget_for_day=self.budget_for_day)
             draft = fallback.items
 
-        fresh = replace_pending_plan(self.items, goal.id, draft, minutes)
+        fresh = replace_pending_plan(self.items, goal.id, draft, self.budget_for_day or minutes)
 
         # 计划本身进短期记忆：它是"今天要做什么"的依据
         self.memory.remember(
@@ -720,7 +724,7 @@ class StudyPlanner:
         items: list[PlanItem] = []
         dropped = 0
         used: dict[str, int] = {}
-        today = date.today()
+        today = self.business_day
         last_day = today + timedelta(days=MAX_PLAN_DAYS)
 
         for entry in entries:
@@ -745,7 +749,8 @@ class StudyPlanner:
                 continue
 
             spent = used.get(day.isoformat(), 0)
-            room = daily_minutes - spent
+            budget = self.budget_for_day(day) if self.budget_for_day else daily_minutes
+            room = budget - spent
 
             if room < 15:
                 dropped += 1
@@ -1047,6 +1052,9 @@ class StudyPlanner:
         "从记忆里读到的"和"没找到，用的默认值"——
         留痕里说错来源，就等于给自己制造了一个假记忆。
         """
+
+        if self.budget_for_day is not None:
+            return self.budget_for_day(self.business_day), "已确认的时间预算"
 
         for hit in bundle.long:
             found = self._parse_duration(hit.item.content)

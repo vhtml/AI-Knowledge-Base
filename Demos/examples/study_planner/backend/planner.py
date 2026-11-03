@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
+from typing import Callable
 
 from .models import Goal, PlanItem, stable_id, today_str
 
@@ -135,6 +136,7 @@ def distribute(
     end: date,
     daily_minutes: int,
     goal_id: str = "",
+    budget_for_day: Callable[[date], int] | None = None,
 ) -> list[PlanItem]:
     """把阶段铺到具体日期上。
 
@@ -159,6 +161,8 @@ def distribute(
 
     for offset in range(work_days):
         day = start + timedelta(days=offset)
+        available = budget_for_day(day) if budget_for_day else daily_minutes
+        per_day = max(1, min(MAX_TASKS_PER_DAY, available // 30))
 
         for slot in range(per_day):
             counter += 1
@@ -176,7 +180,7 @@ def distribute(
                     goal_id=goal_id,
                     title=title,
                     day=day.isoformat(),
-                    minutes=max(15, daily_minutes // per_day),
+                    minutes=max(15, available // per_day),
                     milestone=is_last_of_stage,
                 )
             )
@@ -189,6 +193,7 @@ def generate_plan(
     start: date | None = None,
     daily_minutes: int = DEFAULT_DAILY_MINUTES,
     milestone_count: int = 4,
+    budget_for_day: Callable[[date], int] | None = None,
 ) -> PlanDraft:
     """为单个目标生成计划草稿。
 
@@ -202,7 +207,7 @@ def generate_plan(
     """
 
     begin = start or date.today()
-    end = parse_deadline(goal)
+    end = parse_deadline(goal) if goal.deadline else begin + timedelta(days=FALLBACK_DAYS - 1)
     milestones = build_milestones(goal, count=milestone_count)
 
     note = ""
@@ -212,7 +217,7 @@ def generate_plan(
         note = f"截止日期 {goal.deadline} 已过，先按默认 {FALLBACK_DAYS} 天重排，建议重设目标"
         end = begin + timedelta(days=FALLBACK_DAYS - 1)
 
-    items = distribute(milestones, begin, end, daily_minutes, goal_id=goal.id)
+    items = distribute(milestones, begin, end, daily_minutes, goal_id=goal.id, budget_for_day=budget_for_day)
 
     return PlanDraft(milestones=milestones, items=items, note=note)
 
@@ -270,7 +275,7 @@ def next_undone(items: list[PlanItem], day: str | None = None) -> PlanItem | Non
 
 
 def replace_pending_plan(
-    items: list[PlanItem], goal_id: str, draft: list[PlanItem], daily_minutes: int
+    items: list[PlanItem], goal_id: str, draft: list[PlanItem], daily_minutes: int | Callable[[date], int]
 ) -> list[PlanItem]:
     """重排未来未完成任务，同时把保留任务计入每日预算。"""
 
@@ -288,7 +293,8 @@ def replace_pending_plan(
     for item in draft:
         if item.id in ids or item.day < today:
             continue
-        room = daily_minutes - used.get(item.day, 0)
+        budget = daily_minutes(date.fromisoformat(item.day)) if callable(daily_minutes) else daily_minutes
+        room = budget - used.get(item.day, 0)
         if room < 15:
             continue
         item.minutes = min(item.minutes, room)
