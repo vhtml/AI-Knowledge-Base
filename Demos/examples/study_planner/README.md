@@ -324,6 +324,25 @@ uv run --project .. python -m study_planner.backend.selftest
 
 ---
 
+## 架构图
+
+![study_planner 架构](architecture.svg)
+
+图分五层，自上而下就是一次请求的走向：
+前端层 → 服务层 → 编排与领域层 → 记忆层 → 存储层。
+右侧三个说明面板分别讲 SSE 事件协议、两级记忆的关键约定、数据目录与接口。
+记忆层是本示例的重点，用粗边框标了出来。
+
+| 文件 | 用途 |
+| --- | --- |
+| `architecture.drawio` | 原生可编辑图（draw.io / diagrams.net 打开），改图改这个 |
+| `architecture.svg` | 矢量图，浏览器直接看；内嵌了图元 XML，能在 draw.io 里继续编辑 |
+| `architecture.png` | 位图，方便贴文档 |
+
+SVG 里的文字是纯 SVG 文本，不依赖 `foreignObject`，在任意渲染器里都能正常显示。
+
+---
+
 ## 文件
 
 | 文件 | 用途 |
@@ -340,6 +359,7 @@ uv run --project .. python -m study_planner.backend.selftest
 | `backend/selftest.py` | 后端自检（46 项） |
 | `frontend/src/stores/planner.js` | Pinia 状态中枢 |
 | `frontend/src/api.js` | API 客户端 + SSE 帧解析 |
+| `architecture.drawio` | 架构图源文件 |
 
 ---
 
