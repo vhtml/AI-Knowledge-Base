@@ -488,7 +488,7 @@ class MemoryManager:
         reinforced = self.long.reinforce(content)
 
         if reinforced is not None:
-            self.short.add(content, category, importance=reinforced.importance, **kwargs)
+            self.short.add(content, category, **{**kwargs, "importance": reinforced.importance})
             self._record(
                 PromotionDecision(
                     content=content,

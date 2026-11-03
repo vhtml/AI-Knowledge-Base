@@ -378,14 +378,11 @@ def create_goal(body: GoalRequest) -> dict[str, Any]:
             importance=5,
         )
 
-        from .planner import generate_plan
+        from .planner import generate_plan, replace_pending_plan
 
         draft = generate_plan(goal, daily_minutes=body.daily_minutes)
 
-        existing_ids = {item.id for item in session.planner.items}
-        session.planner.items.extend(
-            item for item in draft.items if item.id not in existing_ids
-        )
+        replace_pending_plan(session.planner.items, goal.id, draft.items, body.daily_minutes)
 
         session.persist()
 

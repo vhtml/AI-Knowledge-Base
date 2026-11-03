@@ -267,3 +267,34 @@ def next_undone(items: list[PlanItem], day: str | None = None) -> PlanItem | Non
     )
 
     return future[0] if future else None
+
+
+def replace_pending_plan(
+    items: list[PlanItem], goal_id: str, draft: list[PlanItem], daily_minutes: int
+) -> list[PlanItem]:
+    """重排未来未完成任务，同时把保留任务计入每日预算。"""
+
+    today = today_str()
+    retained = [
+        item for item in items
+        if item.goal_id != goal_id or item.done or item.day < today
+    ]
+    used: dict[str, int] = {}
+    ids = {item.id for item in retained}
+    for item in retained:
+        used[item.day] = used.get(item.day, 0) + item.minutes
+
+    fresh: list[PlanItem] = []
+    for item in draft:
+        if item.id in ids or item.day < today:
+            continue
+        room = daily_minutes - used.get(item.day, 0)
+        if room < 15:
+            continue
+        item.minutes = min(item.minutes, room)
+        fresh.append(item)
+        ids.add(item.id)
+        used[item.day] = used.get(item.day, 0) + item.minutes
+
+    items[:] = retained + fresh
+    return fresh

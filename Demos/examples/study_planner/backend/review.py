@@ -106,8 +106,13 @@ def find_patterns(
     insights: list[str] = []
     target = day or today_str()
 
-    ordered = sorted(reviews, key=lambda review: review.day)
-    recent = [review for review in ordered if review.day <= target][-LOW_COMPLETION_STREAK:]
+    # 兼容已有的同日重复记录：每个自然日以最后一次复盘为准。
+    by_day = {review.day: review for review in reviews}
+    expected_days = [
+        (date.fromisoformat(target) - timedelta(days=offset)).isoformat()
+        for offset in reversed(range(LOW_COMPLETION_STREAK))
+    ]
+    recent = [by_day[day] for day in expected_days if day in by_day]
 
     if len(recent) == LOW_COMPLETION_STREAK:
         low = all(

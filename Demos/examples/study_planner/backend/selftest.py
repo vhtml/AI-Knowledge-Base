@@ -658,6 +658,48 @@ def test_model_failure_falls_back() -> None:
         check("降级后走的是规则回复", "记下了" in turn.reply, turn.reply)
 
 
+def test_review_regressions() -> None:
+    """覆盖重复记忆、重排、任务匹配和重复复盘的回归。"""
+
+    print("\n[20] 审查回归")
+    memory = MemoryManager()
+    original = memory.promote("重复内容", CATEGORY_NOTE, "测试", importance=4)
+    check("显式重要度的重复记忆可强化", memory.remember("重复内容", importance=2) is original)
+    check("强化副本重要度一致", memory.short.items[0].importance == original.importance)
+    today = date.today().isoformat()
+    yesterday = (date.today() - timedelta(days=1)).isoformat()
+    planner = StudyPlanner(memory=MemoryManager(), goals=[Goal(id="g", title="Python")])
+    bundle = planner.memory.recall("计划")
+    for title in ("旧任务", "新任务"):
+        planner._apply_model_plan([{"date": today, "title": title, "minutes": 60}], None, "计划", bundle, [])
+    check("重排替换未完成任务", [i.title for i in planner.items] == ["新任务"])
+    planner.items[0].done = True
+    planner.items[0].minutes = 20
+    planner.items.extend([
+        PlanItem(id="history", goal_id="g", title="历史", day=yesterday),
+        PlanItem(id="other", goal_id="other", title="其他", day=today, minutes=15),
+    ])
+    planner._apply_model_plan([{"date": today, "title": "第三版", "minutes": 60}], None, "计划", bundle, [])
+    check("重排保留历史和其他目标", {"history", "other"} <= {i.id for i in planner.items})
+    check("已完成任务和其他目标计入预算", sum(i.minutes for i in planner.items if i.day == today) == 60)
+    check("已完成记录保留", next(i for i in planner.items if i.title == "新任务").done)
+    before = [i.done for i in planner.items]
+    reply = planner._apply_model_done({"title": "不存在"}, [])
+    check("名称匹配失败不误完成", before == [i.done for i in planner.items] and "未找到" in reply)
+    planner._apply_model_done({"title": "第三版"}, [])
+    check("匹配成功仍可标记完成", next(i for i in planner.items if i.title == "第三版").done)
+    planner.items = [PlanItem(id="p", goal_id="g", title="练习", day=today)]
+    first = planner._run_review([])
+    second = planner._run_review([])
+    check("同日复盘更新记录", len(planner.reviews) == 1)
+    check("同日重复不判定连续低完成率", not second.insights)
+    old = Review(day=(date.today() - timedelta(days=2)).isoformat(), planned=1)
+    check("不连续日期不误判", not find_patterns([old, first.review], planner.items, today))
+    previous = Review(day=yesterday, planned=1)
+    check("连续自然日仍能识别", any("完成率低于" in i for i in find_patterns([previous, first.review], planner.items, today)))
+    check("兼容历史同日重复记录", not find_patterns([first.review, first.review], planner.items, today))
+
+
 def main() -> int:
     """自检入口。"""
 
@@ -685,6 +727,7 @@ def main() -> int:
     test_goal_dedup()
     test_model_mode()
     test_model_failure_falls_back()
+    test_review_regressions()
 
     print("\n" + "=" * 56)
     print(f"通过 {PASSED} 项，失败 {FAILED} 项")

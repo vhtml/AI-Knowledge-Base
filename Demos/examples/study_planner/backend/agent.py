@@ -58,6 +58,7 @@ from .planner import (
     items_for_day,
     next_undone,
     progress_of,
+    replace_pending_plan,
 )
 from .review import apply_review_findings, run_review
 
@@ -371,9 +372,8 @@ class StudyPlanner:
         minutes, source = self._pick_daily_minutes(bundle)
         draft = generate_plan(goal, daily_minutes=minutes)
 
-        existing = {item.id for item in self.items}
-        fresh = [item for item in draft.items if item.id not in existing]
-        self.items.extend(fresh)
+        fresh = replace_pending_plan(self.items, goal.id, draft.items, minutes)
+        draft.items = fresh
 
         # 计划本身进短期记忆：它是"今天要做什么"的依据
         self.memory.remember(
@@ -408,6 +408,7 @@ class StudyPlanner:
         """
 
         outcome = run_review(self.items, self.reviews, self.goals)
+        self.reviews[:] = [review for review in self.reviews if review.day != outcome.review.day]
         self.reviews.append(outcome.review)
 
         applied, written = apply_review_findings(self.memory, outcome)
@@ -680,9 +681,7 @@ class StudyPlanner:
             fallback = generate_plan(goal, daily_minutes=minutes)
             draft = fallback.items
 
-        existing = {item.id for item in self.items}
-        fresh = [item for item in draft if item.id not in existing]
-        self.items.extend(fresh)
+        fresh = replace_pending_plan(self.items, goal.id, draft, minutes)
 
         # 计划本身进短期记忆：它是"今天要做什么"的依据
         self.memory.remember(
@@ -828,6 +827,9 @@ class StudyPlanner:
                 )
 
                 return f"已标记「{matched.title}」完成。"
+
+            self._record(steps, StepRecord("标记完成", wanted, ok=False, detail="未找到匹配的未完成任务"))
+            return f"未找到未完成任务「{wanted}」，请确认任务标题。"
 
         target = self._mark_next_done(steps)
 
