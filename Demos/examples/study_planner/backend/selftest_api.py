@@ -43,7 +43,7 @@ def build_client(root: Path) -> TestClient:
     from .main import app, session
 
     session.rebind(root)
-    session.planner.llm = None
+    session.service.llm = None
 
     return TestClient(app)
 
@@ -162,7 +162,7 @@ def test_model_mode_stream() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         client = build_client(Path(tmp))
 
-        session.planner.llm = ScriptedLLM(
+        session.service.llm = ScriptedLLM(
             decisions=[
                 {
                     "action": "record_goal",
@@ -176,7 +176,7 @@ def test_model_mode_stream() -> None:
         try:
             res = client.post("/api/chat", json={"message": "我想学 Python 数据分析"})
         finally:
-            session.planner.llm = None
+            session.service.llm = None
 
         events = parse_events(res.text)
         names = [name for name, _ in events]
@@ -308,7 +308,7 @@ def test_rollover() -> None:
         check("跨天返回 200", res.status_code == 200, str(res.status_code))
 
         after = res.json()
-        check("短期工作区已清空", len(after["memory"]["short"]) == 0, str(len(after["memory"]["short"])))
+        check("整理不删除原始会话", len(after["memory"]["short"]) > 0, str(len(after["memory"]["short"])))
         check(
             "长期档案保留并可能增加",
             len(after["memory"]["long"]) >= len(before["memory"]["long"]),

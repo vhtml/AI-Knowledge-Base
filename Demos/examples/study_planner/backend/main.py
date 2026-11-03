@@ -1,416 +1,174 @@
-"""FastAPI 后端：把学习规划师暴露成可流式消费的工作台接口。
-
-接口分两类：
-
-**流式（SSE）** —— `POST /api/chat`
-    一边处理一边把中间状态推给前端：先推"正在召回"，
-    再推每一步留痕，最后推回答正文和最新状态快照。
-    前端因此能实时显示"这轮动了哪块记忆"，而不是等一个干巴巴的结果。
-
-**快照（REST）** —— `/api/state`、`/api/tasks/{id}/toggle` 等
-    工作台的各个面板（今日待办、目标、记忆）需要读全量状态。
-    用 REST 拉快照比用 SSE 推更合适：面板状态是"要什么拿什么"，
-    不是"有什么推什么"。
-
-会话状态由 `SessionStore` 持有，整个进程一份。
-"""
-
+"""统一 Web 操作入口，持久化结果比 SSE 传输更可靠。"""
 from __future__ import annotations
 
 import asyncio
 import json
 import os
 import queue
+import sqlite3
 import threading
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
-from .agent import StepRecord, StudyPlanner
 from .llm import build_client_from_env
-from .memory import MemoryManager
-from .models import CATEGORY_GOAL, CATEGORY_NOTE, Goal, PlanItem, Review
-from .storage import Storage
+from .memory_types import ServiceError
+from .repositories import uid
+from .turn_service import TurnService
 
-DEFAULT_DATA_DIR = Path.home() / ".study-planner"
-
-# 数据目录可以用环境变量覆盖，这样开发时不必动真实数据
-DATA_DIR_ENV = "STUDY_PLANNER_DATA_DIR"
+DEFAULT_DATA_DIR = Path.home() / '.study-planner'
+DATA_DIR_ENV = 'STUDY_PLANNER_DATA_DIR'
 
 
-def _load_dotenv() -> None:
-    """加载 `Demos/.env` 里的模型配置。
-
-    显式按路径找：从 `Demos/examples` 启动时 CWD 找不到，
-    但仓库的约定是 `.env` 统一放 `Demos/` 那一层。
-    """
-
-    from dotenv import load_dotenv
-
-    candidate = Path(__file__).resolve().parents[3] / ".env"
-
-    if candidate.exists():
-        load_dotenv(candidate)
-    else:
-        load_dotenv()
-
-
-# ------------------------------------------------------------
-# 会话状态
-# ------------------------------------------------------------
-
-
-@dataclass
 class SessionStore:
-    """进程内的会话状态。
+    """只持有配置与服务，不持有可变的用户业务快照。"""
+    def __init__(self) -> None:
+        self.root = Path(os.getenv(DATA_DIR_ENV) or DEFAULT_DATA_DIR)
+        self._service: TurnService | None = None
+        self.lock = threading.Lock()
 
-    整个服务共用一份 StudyPlanner 实例：目标、待办、记忆都是
-    全局状态，不是"每个连接一份"。所以所有写操作都要串行化，
-    否则两个并发请求会同时改记忆，导致条数对不上。
-    """
-
-    planner: StudyPlanner
-    storage: Storage
-    lock: threading.Lock = field(default_factory=threading.Lock)
-
-    @classmethod
-    def build(cls, root: Path | str = DEFAULT_DATA_DIR) -> "SessionStore":
-        """从磁盘恢复一份会话状态。"""
-
-        storage = Storage(root)
-        memory = storage.build_memory()
-
-        planner = StudyPlanner(
-            memory=memory,
-            goals=storage.load_goals(),
-            items=storage.load_items(),
-            reviews=storage.load_reviews(),
-            llm=build_client_from_env(),
-        )
-
-        return cls(planner=planner, storage=storage)
-    def persist(self) -> None:
-        """把当前状态落盘。"""
-
-        self.storage.save_all(
-            self.planner.memory,
-            self.planner.goals,
-            self.planner.items,
-            self.planner.reviews,
-        )
+    @property
+    def service(self) -> TurnService:
+        with self.lock:
+            if self._service is None:
+                from dotenv import load_dotenv
+                load_dotenv(Path(__file__).resolve().parents[3] / '.env')
+                self._service = TurnService(self.root, build_client_from_env())
+            return self._service
 
     def rebind(self, root: Path | str) -> None:
-        """换到另一个数据目录并重新载入。
-
-        测试里用它把会话指到临时目录，避免动真实数据。
-        """
-
-        self.storage = Storage(root)
-        self.planner.memory = self.storage.build_memory()
-        self.planner.goals = self.storage.load_goals()
-        self.planner.items = self.storage.load_items()
-        self.planner.reviews = self.storage.load_reviews()
-
-    def snapshot(self) -> dict[str, Any]:
-        """全量状态快照——前端各个面板的数据都从这里来。
-
-        长期记忆带一个 `superseded` 标记而不是直接过滤掉：
-        被取代的旧说法也是信息（它说明用户改过主意），
-        前端可以折叠显示而不是假装没发生过。
-        """
-
-        planner = self.planner
-        stats = planner.memory.stats()
-
-        return {
-            "goals": [goal.to_dict() for goal in planner.goals],
-            "items": [item.to_dict() for item in planner.items],
-            "reviews": [review.to_dict() for review in planner.reviews],
-            "memory": {
-                "stats": stats,
-                "short": [item.to_dict() for item in planner.memory.short.items],
-                "long": [
-                    {
-                        **item.to_dict(),
-                        "superseded": bool(item.superseded_by),
-                    }
-                    for item in planner.memory.long.items
-                ],
-            },
-        }
+        with self.lock:
+            self.root = Path(root)
+            self._service = TurnService(self.root)
 
 
-# ------------------------------------------------------------
-# 请求 / 响应模型
-# ------------------------------------------------------------
+session = SessionStore()
+app = FastAPI(title='学习规划师 API')
+app.add_middleware(CORSMiddleware, allow_origins=['http://localhost:5173', 'http://127.0.0.1:5173'], allow_methods=['*'], allow_headers=['*'])
 
 
-class ChatRequest(BaseModel):
-    """聊天请求。"""
+@app.exception_handler(ServiceError)
+async def service_error(request: Request, exc: ServiceError) -> JSONResponse:
+    return JSONResponse(status_code=exc.status, content={'detail': str(exc), 'code': exc.code})
 
+
+@app.exception_handler(sqlite3.Error)
+async def database_error(request: Request, exc: sqlite3.Error) -> JSONResponse:
+    code = 'STORE_BUSY' if 'locked' in str(exc) else 'STORE_UNAVAILABLE'
+    return JSONResponse(status_code=503, content={'detail': '档案暂时不可用，请稍后重试', 'code': code})
+
+
+class WriteRequest(BaseModel):
+    request_id: str | None = Field(default=None, min_length=1, max_length=120)
+
+
+class ChatRequest(WriteRequest):
     message: str = Field(min_length=1, max_length=4000)
+    conversation_id: str = Field(default='default', min_length=1, max_length=120)
 
 
-class ToggleRequest(BaseModel):
-    """切换任务完成状态。"""
-
+class ToggleRequest(WriteRequest):
     done: bool
 
 
-class GoalRequest(BaseModel):
-    """直接创建目标（表单入口，不必靠自然语言）。"""
-
+class GoalRequest(WriteRequest):
     title: str = Field(min_length=1, max_length=120)
-    deadline: str = ""
+    deadline: str = ''
     daily_minutes: int = Field(default=60, ge=15, le=480)
 
 
-# ------------------------------------------------------------
-# SSE 事件
-# ------------------------------------------------------------
-
-
 def sse(event: str, data: dict[str, Any]) -> str:
-    """把一个事件序列化成 SSE 帧。"""
-
-    payload = json.dumps(data, ensure_ascii=False)
-
-    return f"event: {event}\ndata: {payload}\n\n"
+    return f'event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n'
 
 
-# ------------------------------------------------------------
-# 应用
-# ------------------------------------------------------------
-
-app = FastAPI(title="学习规划师 API")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-_load_dotenv()
-
-session = SessionStore.build(os.getenv(DATA_DIR_ENV) or DEFAULT_DATA_DIR)
-
-
-@app.get("/health")
+@app.get('/health')
 def health() -> dict[str, str]:
-    """健康检查。
-
-    顺带报一下模型是否就绪——前端用它显示当前是模型模式还是规则模式。
-    """
-
-    return {
-        "status": "ok",
-        "mode": "model" if session.planner.llm is not None else "rule",
-    }
+    return {'status': 'ok', 'mode': 'model' if session.service.llm is not None else 'rule', 'storage': 'sqlite'}
 
 
-@app.get("/api/state")
-def get_state() -> dict[str, Any]:
-    """全量状态快照。"""
-
-    with session.lock:
-        return session.snapshot()
+@app.get('/api/state')
+def get_state(conversation_id: str = 'default') -> dict[str, Any]:
+    return session.service.repo.snapshot(conversation_id)
 
 
-@app.post("/api/chat")
+@app.get('/api/turns/{turn_id}')
+def get_turn(turn_id: str) -> dict[str, Any]:
+    return session.service.get(turn_id).to_dict()
+
+
+@app.post('/api/turns/{turn_id}/cancel')
+def cancel_turn(turn_id: str) -> dict[str, Any]:
+    return session.service.cancel(turn_id).to_dict()
+
+
+@app.post('/api/chat')
 async def chat(body: ChatRequest) -> StreamingResponse:
-    """流式对话：边处理边推送。
+    service = session.service
+    request_id = body.request_id or uid('request')
+    turn_id, fresh = service.accept(body.conversation_id, request_id, body.message)
+    events: queue.Queue[Any] = queue.Queue(maxsize=256)
 
-    推的事件依次是：
-    - `status`  阶段提示（"正在召回记忆"这类）
-    - `step`    每一条留痕，前端用它渲染"这轮动了哪块记忆"
-    - `delta`   模型回复的文本增量，一段一段推（模型模式才有）
-    - `reply`   回答正文（完整文本，权威版本）
-    - `state`   最新状态快照
-    - `error`   出错时的说明
-
-    `delta` 只负责"逐字往外冒"的体感，`reply` 才是完整正文——
-    前端收到 `reply` 时用完整文本覆盖已流式显示的内容，
-    这样即使中间丢过一段，最终显示也不会错。
-
-    处理逻辑跑在一个工作线程里：Agent 是同步的，
-    而 FastAPI 的事件循环不能被同步代码阻塞住。
-    线程和事件循环之间用队列传递，队列满了就丢最旧的
-    （宁可少显示一条留痕，也不能让生产端卡死）。
-    """
-
-    events: queue.Queue[dict[str, Any] | None] = queue.Queue(maxsize=1024)
-
-    def report(step: StepRecord) -> None:
-        """留痕回调——从工作线程调用。"""
-
+    def emit(event: str, data: dict[str, Any]) -> None:
         try:
-            events.put_nowait(
-                {
-                    "event": "step",
-                    "data": {
-                        "phase": step.phase,
-                        "title": step.title,
-                        "ok": step.ok,
-                        "detail": step.detail,
-                    },
-                }
-            )
+            events.put_nowait((event, data))
         except queue.Full:
-            pass
-
-    def on_delta(text: str) -> None:
-        """模型回复的文本增量——从工作线程调用。"""
-
-        try:
-            events.put_nowait({"event": "delta", "data": {"text": text}})
-        except queue.Full:
-            # 丢一段增量只会让"逐字效果"不完整，
-            # 末尾的 reply 事件仍然带着完整正文，前端会覆盖回来
-            pass
+            if event in ('delta', 'step', 'status'):
+                return
+            try:
+                events.get_nowait()
+            except queue.Empty:
+                pass
+            events.put_nowait((event, data))
 
     def worker() -> None:
-        """在工作线程里跑完一轮对话。"""
-
         try:
-            with session.lock:
-                events.put_nowait({"event": "status", "data": {"text": "正在召回记忆…"}})
-                turn = session.planner.handle(
-                    body.message, reporter=report, on_delta=on_delta
-                )
-                session.persist()
-
-            events.put_nowait({"event": "reply", "data": {"text": turn.reply}})
-            events.put_nowait({"event": "state", "data": session.snapshot()})
-
-        except Exception as exc:  # 兜底：不能因为一轮失败就断掉整个流
-            events.put_nowait({"event": "error", "data": {"message": f"{type(exc).__name__}: {exc}"}})
-
+            emit('operation', {'turn_id': turn_id, 'request_id': request_id})
+            result = service.run(turn_id, body.message, on_event=emit) if fresh else service.get(turn_id)
+            if result.status == 'completed':
+                emit('reply', {'text': result.reply, **result.to_dict()})
+            emit('state', service.repo.snapshot(body.conversation_id))
+            emit('done', result.to_dict())
+        except Exception as exc:
+            emit('error', {'message': str(exc) if isinstance(exc, ServiceError) else '处理失败，可通过操作编号查询结果', 'code': getattr(exc, 'code', 'PROCESSING_FAILED'), 'turn_id': turn_id})
         finally:
-            events.put_nowait(None)
+            emit('end', {})
 
     threading.Thread(target=worker, daemon=True).start()
 
-    async def stream() -> Iterator[str]:
-        """把队列里的事件转成 SSE 帧吐出去。"""
-
-        loop = asyncio.get_running_loop()
-
+    async def stream():
         while True:
-            item = await loop.run_in_executor(None, events.get)
-
-            if item is None:
+            event, data = await asyncio.to_thread(events.get)
+            if event == 'end':
                 break
+            yield sse(event, data)
 
-            yield sse(item["event"], item["data"])
-
-    return StreamingResponse(
-        stream(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        },
-    )
+    return StreamingResponse(stream(), media_type='text/event-stream', headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})
 
 
-@app.post("/api/tasks/{task_id}/toggle")
+def execute(command: str, text: str, body: WriteRequest, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    result = session.service.submit('default', body.request_id or uid('request'), text, command=command, payload=payload)
+    return {**session.service.repo.snapshot(), 'operation': result.to_dict()}
+
+
+@app.post('/api/tasks/{task_id}/toggle')
 def toggle_task(task_id: str, body: ToggleRequest) -> dict[str, Any]:
-    """切换某条待办的完成状态。
-
-    任务勾选是工作台最高频的交互，单独给一个接口——
-    不必为了点一下勾选就走一轮自然语言。
-    """
-
-    with session.lock:
-        target = next((item for item in session.planner.items if item.id == task_id), None)
-
-        if target is None:
-            raise HTTPException(404, f"任务不存在：{task_id}")
-
-        target.done = body.done
-        session.planner.memory.remember(
-            f"{'完成' if body.done else '取消完成'}「{target.title}」",
-            CATEGORY_NOTE,
-            importance=3,
-        )
-        session.persist()
-
-        return session.snapshot()
+    return execute('toggle', '更新待办完成状态', body, {'id': task_id, 'done': body.done})
 
 
-@app.post("/api/goals")
+@app.post('/api/goals')
 def create_goal(body: GoalRequest) -> dict[str, Any]:
-    """直接创建目标并按它排计划。
-
-    同一个目标重复提交是**更新**而不是新增——
-    id 由标题和日期派生，重复提交会撞上同一个 id。
-    """
-
-    from .models import stable_id, today_str
-
-    with session.lock:
-        goal_id = stable_id("g", body.title, today_str())
-        existing = next((item for item in session.planner.goals if item.id == goal_id), None)
-
-        if existing is not None:
-            existing.title = body.title
-
-            if body.deadline:
-                existing.deadline = body.deadline
-
-            goal = existing
-
-        else:
-            goal = Goal(id=goal_id, title=body.title, deadline=body.deadline)
-            session.planner.goals.append(goal)
-
-        session.planner.memory.promote(
-            f"学习目标：{body.title}",
-            CATEGORY_GOAL,
-            "用户在界面上创建目标",
-            importance=5,
-        )
-
-        from .planner import generate_plan, replace_pending_plan
-
-        draft = generate_plan(goal, daily_minutes=body.daily_minutes)
-
-        replace_pending_plan(session.planner.items, goal.id, draft.items, body.daily_minutes)
-
-        session.persist()
-
-        return session.snapshot()
+    return execute('goal', f'创建目标：{body.title}', body, body.model_dump(exclude={'request_id'}))
 
 
-@app.post("/api/rollover")
-def rollover() -> dict[str, Any]:
-    """模拟跨天：短期工作区清空，值得沉淀的进长期档案。"""
-
-    with session.lock:
-        session.planner.rollover()
-        session.persist()
-
-        return session.snapshot()
+@app.post('/api/rollover')
+def rollover(body: WriteRequest | None = None) -> dict[str, Any]:
+    return execute('rollover', '整理当前业务日', body or WriteRequest())
 
 
-@app.post("/api/reset")
-def reset() -> dict[str, Any]:
-    """清空全部数据，回到初始状态。"""
-
-    with session.lock:
-        planner = session.planner
-        planner.goals.clear()
-        planner.items.clear()
-        planner.reviews.clear()
-        planner.memory.short.clear()
-        planner.memory.long.items.clear()
-        session.persist()
-
-        return session.snapshot()
+@app.post('/api/reset')
+def reset(body: WriteRequest | None = None) -> dict[str, Any]:
+    return execute('reset', '清空学习档案', body or WriteRequest())
