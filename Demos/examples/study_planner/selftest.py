@@ -1,6 +1,6 @@
 """自检脚本：验证两级记忆的核心不变量。
 
-不依赖 pytest，也不联网，直接运行：
+不依赖 pytest，直接运行：
 
     cd Demos/examples
     python -m study_planner.selftest
@@ -371,7 +371,7 @@ def test_intent_detection() -> None:
 def test_end_to_end() -> None:
     """端到端：记目标 → 生成计划 → 完成 → 复盘 → 查询。"""
 
-    print("\n[14] 端到端（离线）")
+    print("\n[14] 端到端")
 
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)

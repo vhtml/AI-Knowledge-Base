@@ -1,26 +1,18 @@
-"""命令行入口：交互对话、单句执行、离线演示剧本。
+"""命令行入口：交互对话、单句执行。
 
 必须在 Demos/examples 目录下运行（包在 examples 下）：
 
     cd Demos/examples
     uv run --project .. python -m study_planner                # 交互模式
     uv run --project .. python -m study_planner --task "我想学 Python"
-    uv run --project .. python -m study_planner --demo         # 离线演示
-
-离线演示不联网、不消耗 token，用临时目录存数据，跑完即弃，
-不会污染 ~/.study-planner 里的真实记录。
 """
 
 from __future__ import annotations
 
 import argparse
-import sys
-import tempfile
 from pathlib import Path
 
 from .agent import StepRecord, StudyPlanner
-from .memory import MemoryManager
-from .models import CATEGORY_WEAKNESS
 from .storage import Storage
 
 BANNER = """┌──────────────────────────────────────────────┐
@@ -53,16 +45,6 @@ HELP_TEXT = """可用命令：
   我的进度            查看进度和相关记忆
 """
 
-# 离线演示剧本：每一步对应一类记忆行为
-DEMO_SCENARIOS: tuple[tuple[str, str], ...] = (
-    ("我想学 Python 数据分析", "记录目标 → 进长期记忆并钉住"),
-    ("我每天只有 30 分钟", "说出时间预算 → 记进长期记忆"),
-    ("生成计划", "排计划 → 按记忆里的预算排，不是用默认值"),
-    ("今天完成了一项", "标记完成 → 写短期记忆"),
-    ("复盘", "对账 + 找规律 + 强信号沉淀到长期"),
-    ("我的进度", "召回相关记忆并展示"),
-)
-
 
 def build_parser() -> argparse.ArgumentParser:
     """命令行参数。"""
@@ -73,7 +55,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     parser.add_argument("--task", metavar="TEXT", help="只跑一句话，打印结果后退出")
-    parser.add_argument("--demo", action="store_true", help="运行内置演示剧本（离线）")
     parser.add_argument("--data-dir", metavar="DIR", help="数据目录，默认 ~/.study-planner")
     parser.add_argument("--quiet", action="store_true", help="不打印决策过程，只打印回答")
 
@@ -220,81 +201,14 @@ def handle_command(planner: StudyPlanner, command: str, root: Path) -> bool:
     return True
 
 
-def run_demo(args: argparse.Namespace) -> int:
-    """跑内置演示剧本。
-
-    用临时目录存数据，跑完即弃。
-    """
-
-    print(BANNER)
-    print("离线演示（临时数据目录，跑完即弃）：\n")
-
-    with tempfile.TemporaryDirectory(prefix="study-planner-demo-") as tmp:
-        root = Path(tmp)
-        planner = build_planner(args, root)
-        total = len(DEMO_SCENARIOS) + 2
-
-        for index, (text, expectation) in enumerate(DEMO_SCENARIOS, start=1):
-            print("─" * 56)
-            print(f"[{index}/{total}] {text}")
-            print(f"      预期：{expectation}")
-
-            turn = planner.handle(text)
-            print(f"  答：{turn.reply}\n")
-
-        # 演示记忆的折叠：短期工作区满了会折叠
-        print("─" * 56)
-        print(f"[{total - 1}/{total}] 短期记忆容量压力测试")
-        print("      预期：超过容量后旧条目折叠成一条摘要，不直接丢弃")
-
-        capacity = planner.memory.short.capacity
-
-        for index in range(capacity + 5):
-            planner.memory.remember(f"练习笔记 {index}：手写推导一遍公式")
-
-        stats = planner.memory.stats()
-        print(f"  写入 {capacity + 5} 条，工作区剩 {stats['short']} 条，"
-              f"折叠了 {stats['short_folded']} 次")
-        print("  折叠后的摘要：" + planner.memory.short.items[0].content[:60] + "…\n")
-
-        # 演示跨天：先晋升再清空
-        print("─" * 56)
-        print(f"[{total}/{total}] 跨天滚动")
-        print("      预期：短期工作区清空，值得沉淀的进长期档案")
-
-        before = planner.memory.stats()
-
-        # 先制造一条"被反复提到"的内容，跨天时它才够格晋升
-        planner.memory.remember("注意力总是飘走，番茄钟比较管用", CATEGORY_WEAKNESS)
-        planner.memory.remember("注意力总是飘走，番茄钟比较管用", CATEGORY_WEAKNESS)
-
-        moved = planner.rollover()
-        stats = planner.memory.stats()
-
-        print(f"  跨天前：短期 {before['short']} 条，长期 {before['long']} 条")
-        print(f"  跨天后：短期 {stats['short']} 条，长期 {stats['long']} 条，"
-              f"本次晋升 {len(moved)} 条")
-
-        for content in moved:
-            print(f"  - {content}")
-
-        print()
-        print("演示结束。长期记忆里的内容下次启动还在，短期工作区是干净的。")
-
-    return 0
-
-
 def main(argv: list[str] | None = None) -> int:
     """程序入口。"""
 
     args = build_parser().parse_args(argv)
 
-    if args.demo:
-        return run_demo(args)
-
-    root = Path(args.data_dir).expanduser() if args.data_dir else None
-
-    if root is None:
+    if args.data_dir:
+        root = Path(args.data_dir).expanduser()
+    else:
         from .storage import DEFAULT_ROOT
 
         root = DEFAULT_ROOT

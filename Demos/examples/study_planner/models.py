@@ -10,7 +10,7 @@
 - MemoryItem  记忆条目，短期和长期共用同一个结构，用 scope 区分
 
 统一用 dataclass + to_dict/from_dict，方便直接落成 JSON，
-也不需要引入 pydantic 依赖（离线模式要能裸解释器跑起来）。
+也不需要引入 pydantic 依赖。
 """
 
 from __future__ import annotations
