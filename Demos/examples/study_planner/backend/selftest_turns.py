@@ -4,6 +4,7 @@ from __future__ import annotations
 import tempfile
 import threading
 import unittest
+import json
 from pathlib import Path
 from .db import transaction
 from .memory_types import ServiceError
@@ -61,6 +62,61 @@ class TurnTests(unittest.TestCase):
         result = self.service.get(tid)
         self.assertEqual(result.reply, '已保存')
         self.assertTrue(result.degraded)
+
+    def test_empty_legacy_files_do_not_block_startup(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for name in ('goals', 'plans', 'reviews'):
+                (root / f'{name}.json').write_text('[]')
+            (root / 'memory.json').write_text(json.dumps({'short': [], 'long': [], 'fold_count': 0}))
+            before = {p.name: p.read_bytes() for p in root.glob('*.json')}
+            service = TurnService(root)
+            self.assertEqual(service.repo.snapshot()['goals'], [])
+            with transaction(service.repo.path, write=False) as db:
+                self.assertEqual(db.execute('SELECT count(*) FROM imports').fetchone()[0], 1)
+            self.assertEqual(before, {name: (root / name).read_bytes() for name in before})
+            service.close()
+            reopened = TurnService(root)
+            self.assertEqual(reopened.repo.snapshot()['memory']['long'], [])
+            reopened.close()
+
+    def test_real_legacy_data_still_requires_explicit_migration(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / 'goals.json').write_text(json.dumps([{'id': 'g', 'title': '保留原目标'}]))
+            with self.assertRaises(ServiceError) as error:
+                TurnService(root)
+            self.assertEqual(error.exception.code, 'MIGRATION_REQUIRED')
+            self.assertEqual(error.exception.status, 503)
+            self.assertEqual(json.loads((root / 'goals.json').read_text())[0]['title'], '保留原目标')
+
+    def test_empty_legacy_does_not_overwrite_existing_sqlite_data(self) -> None:
+        self.service.submit('default', 'goal', '我想学 Python')
+        root = Path(self.temp.name)
+        (root / 'goals.json').write_text('[]')
+        (root / 'memory.json').write_text('{"short":[],"long":[]}')
+        reopened = TurnService(root)
+        self.assertEqual(len(reopened.repo.snapshot()['goals']), 1)
+        reopened.close()
+
+    def test_startup_api_returns_actionable_response(self) -> None:
+        import os
+        from unittest.mock import patch
+        from fastapi.testclient import TestClient
+        from . import main
+        for populated in (False, True):
+            with tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                (root / 'goals.json').write_text(json.dumps([{'id':'g','title':'原目标'}] if populated else []))
+                session = main.SessionStore()
+                with patch.object(main, 'session', session), patch.dict(os.environ, {main.DATA_DIR_ENV: str(root), 'LLM_API_KEY': ''}):
+                    response = TestClient(main.app, raise_server_exceptions=False).get('/health')
+                self.assertEqual(response.status_code, 503 if populated else 200)
+                if populated:
+                    self.assertEqual(response.json()['code'], 'MIGRATION_REQUIRED')
+                else:
+                    self.assertEqual(response.json()['status'], 'ok')
+                    session._service.close()
 
 
 if __name__ == '__main__':

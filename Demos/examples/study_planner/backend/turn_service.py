@@ -43,20 +43,35 @@ class TurnService:
     def __init__(self, root: Path | str, llm: Any = None, clock: Clock | None = None) -> None:
         self._runtime_guard = runtime_lock(Path(root).expanduser())
         self._runtime_guard.__enter__()
-        self.repo = Repository(root)
-        self.llm = llm
-        self.clock = clock or Clock()
-        self.context = ContextBuilder(self.repo, self.clock)
-        self.maintenance = Maintenance(self.repo, self.clock)
-        # 旧 JSON 需要显式导入，不能悄悄启动一份空档案。
-        with transaction(self.repo.path, write=False) as db:
-            imported = db.execute("SELECT 1 FROM imports LIMIT 1").fetchone()
-        if not imported and any((self.repo.root / name).exists() for name in ("goals.json", "plans.json", "memory.json", "reviews.json")):
-            raise ValueError("发现旧 JSON，请先运行 migrate_data --dry-run 并正式导入")
-        self.deletion = DeletionService(self.repo)
-        self.deletion.initialize()
-        self.retrieval = Retrieval(self.repo, self.clock)
-        self.recover()
+        try:
+            self.repo = Repository(root)
+            self.llm = llm
+            self.clock = clock or Clock()
+            self.context = ContextBuilder(self.repo, self.clock)
+            self.maintenance = Maintenance(self.repo, self.clock)
+            # 旧 JSON 需要显式导入，不能悄悄启动一份空档案。
+            with transaction(self.repo.path, write=False) as db:
+                imported = db.execute("SELECT 1 FROM imports LIMIT 1").fetchone()
+            if not imported and any((self.repo.root / name).exists() for name in ("goals.json", "plans.json", "memory.json", "reviews.json")):
+                from .migrate_data import inspect_source, migrate
+                try:
+                    data, _, _ = inspect_source(self.repo.root)
+                except (ValueError, KeyError, TypeError) as exc:
+                    raise ServiceError("MIGRATION_REQUIRED", "旧档案校验失败，请先运行 migrate_data --dry-run 检查并迁移", 503) from exc
+                if any(data[name] for name in ("goals", "plans", "reviews", "memories")):
+                    raise ServiceError("MIGRATION_REQUIRED", "发现旧学习记录，请先运行 migrate_data --dry-run 检查并迁移；原文件已保留", 503)
+                with transaction(self.repo.path, write=False) as db:
+                    empty_database = not any(db.execute(f"SELECT 1 FROM {table} LIMIT 1").fetchone() for table in ("goals", "plan_items", "reviews", "turns", "memories", "constraints", "messages"))
+                if empty_database:
+                    # 旧版首次启动也会生成空 JSON；只为空档案初始化并留下导入审计。
+                    migrate(self.repo.root, self.repo.root, dry_run=False)
+            self.deletion = DeletionService(self.repo)
+            self.deletion.initialize()
+            self.retrieval = Retrieval(self.repo, self.clock)
+            self.recover()
+        except BaseException:
+            self.close()
+            raise
 
     def close(self) -> None:
         guard = getattr(self, "_runtime_guard", None)

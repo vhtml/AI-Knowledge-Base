@@ -48,7 +48,7 @@ uv run --project .. python -m study_planner.backend --data-dir /tmp/my-study
 
 ## 已有 JSON 用户：先迁移
 
-**先停止旧版 Web/CLI 的全部写入。不要直接启动新版本覆盖旧数据。** 新版检测到未导入 JSON 时会拒绝启动，原文件不修改。
+**先停止旧版 Web/CLI 的全部写入。不要直接启动新版本覆盖旧数据。** 新版检测到非空、未导入的旧 JSON 时，接口返回带迁移说明的 503，原文件不修改。若旧 JSON 与 SQLite 都为空，会自动完成空档案初始化并保留原文件快照和导入审计；若 SQLite 已有数据，空旧 JSON 不会覆盖它。
 
 ```bash
 cd Demos/examples

@@ -41,7 +41,11 @@ class SessionStore:
                 from dotenv import load_dotenv
                 load_dotenv(Path(__file__).resolve().parents[3] / '.env')
                 self.root = Path(os.getenv(DATA_DIR_ENV) or self.root)
-                self._service = TurnService(self.root, build_client_from_env())
+                try:
+                    self._service = TurnService(self.root, build_client_from_env())
+                except (ValueError, OSError) as exc:
+                    logging.getLogger(__name__).warning('startup_failed type=%s', type(exc).__name__)
+                    raise ServiceError('STARTUP_VALIDATION_FAILED', '档案初始化未通过，请检查数据目录、配置和删除清单', 503) from exc
             return self._service
 
     def rebind(self, root: Path | str) -> None:
