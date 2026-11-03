@@ -9,8 +9,9 @@
 - `Finance/` — 金融知识：Macro / Equity / Portfolio / Valuation
 - `Projects/` — 独立项目工作区，每个项目一个子目录
 - `Demos/` — **唯一的代码区**；Python 依赖、`.env`、`.venv` 都在这一层
-- `Demos/examples/` — 可独立运行的示例：`chat_cli/`（命令行聊天）、`rag-demo/`（检索问答）、`skills/`、`retry-demo/` 等
+- `Demos/examples/` — 可独立运行的示例：`chat_cli/`（命令行聊天）、`rag-demo/`（检索问答）、`study_planner/`（学习规划师）、`skills/`、`retry-demo/` 等
 - `Demos/examples/rag-demo/backend/` — FastAPI 服务；`frontend/` — Vue 3 + Vite 前端
+- `Demos/examples/study_planner/backend/` — FastAPI 服务（SSE 流式对话）；`frontend/` — Vue 3 + Vite + Pinia 前端
 
 ## 环境与命令
 
@@ -19,7 +20,9 @@ Python 用 `uv` 管理依赖（Python 3.13），前端用 `npm`。
 - 安装依赖：`cd Demos && uv sync`
 - 自检：`cd Demos/examples && uv run --project .. python -m chat_cli.selftest`
 - 启动后端：`cd Demos && uv run uvicorn examples.rag-demo.backend.main:app --reload --port 8000`
+- 启动学习规划师后端：`cd Demos && uv run uvicorn examples.study_planner.backend.main:app --reload --port 8000`
 - 启动前端：`cd Demos/examples/rag-demo/frontend && npm install && npm run dev`（http://localhost:5173）
+- 启动学习规划师前端：`cd Demos/examples/study_planner/frontend && npm install && npm run dev`（http://localhost:5173）
 - 前端构建：`npm run build`（产物在 `dist/`，不提交）
 - 架构图：`chat_cli/architecture.drawio` 是可编辑源头，`.svg` / `.png` 由它渲染——改图请改 `.drawio`
 

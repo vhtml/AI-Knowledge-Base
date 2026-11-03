@@ -182,7 +182,7 @@ cd Demos/examples
 uv run --project .. python -m study_planner.selftest
 ```
 
-93 项检查，覆盖记忆的行为约定：
+97 项检查，覆盖记忆的行为约定：
 
 | 分组 | 验的是什么 |
 | --- | --- |
@@ -198,6 +198,129 @@ uv run --project .. python -m study_planner.selftest
 | 每日复盘 | 对账、找规律、摘要进短期、强信号进长期 |
 | 端到端 | 记目标 → 排计划 → 完成 → 复盘 → 查询 → 落盘 |
 | 时间预算 | 捕获、影响排期、变更时槽位取代 |
+| 目标去重 | 重复记录更新而非追加，重复排计划不叠加待办 |
+
+---
+
+## 前端工作台
+
+FastAPI + Vue 3 + SSE。把规划师变成一个可以看见"记忆在动"的工作台。
+
+```
+Demos/examples/study_planner/
+├── backend/          FastAPI 服务
+│   ├── main.py       SSE 对话流 + 状态快照接口
+│   └── selftest.py   后端自检（46 项）
+└── frontend/         Vue 3 + Vite + Pinia
+    ├── src/
+    │   ├── api.js            API 客户端（含 SSE 帧解析）
+    │   ├── stores/planner.js Pinia 状态中枢
+    │   ├── App.vue           工作台外壳
+    │   └── components/
+    │       ├── ChatPanel.vue  对话 + 留痕轨迹
+    │       └── SidePanel.vue  今日 / 目标 / 记忆面板
+    └── vite.config.js
+```
+
+### 跑起来
+
+两个终端：
+
+```bash
+# 终端 1：后端
+cd Demos
+uv run uvicorn examples.study_planner.backend.main:app --reload --port 8000
+
+# 终端 2：前端
+cd Demos/examples/study_planner/frontend
+npm install
+npm run dev
+```
+
+打开 http://localhost:5173。
+
+开发时前端走 **Vite 代理**（`/api` → 后端），前后端同源，
+不用管端口号也不碰 CORS。后端端口改了的话：
+
+```bash
+VITE_API_BASE=http://127.0.0.1:9000 npm run dev
+```
+
+数据默认存 `~/.study-planner`，可以用环境变量改：
+
+```bash
+STUDY_PLANNER_DATA_DIR=/tmp/study-scratch uv run uvicorn ...
+```
+
+### SSE 事件流
+
+`POST /api/chat` 返回 `text/event-stream`，事件依次是：
+
+| 事件 | 载荷 | 前端拿它做什么 |
+| --- | --- | --- |
+| `status` | 阶段提示 | 显示"正在召回记忆…" |
+| `step` | 单条留痕 | 实时渲染"这轮动了哪块记忆" |
+| `reply` | 回答正文 | 显示回复 |
+| `state` | 全量快照 | 刷新右侧各面板 |
+| `error` | 错误说明 | 显示错误条 + 重试 |
+
+**为什么留痕要单独推。** 只推最终答案的话，用户只看到"计划已生成"，
+不知道背后发生了什么。把 `step` 推出去，工作台就能把
+"召回 → 记录目标 → 长期记忆 → 回写"这条链路摊开给人看——
+这是本示例最想让人看到的东西。
+
+**为什么不用 EventSource。** EventSource 只支持 GET 且不能带 body，
+而聊天请求要 POST 一段文本。所以用 `fetch` 拿 ReadableStream，
+自己按 SSE 规范切帧（`api.js` 的 `parseSSE`）。
+
+### 状态管理
+
+Pinia store 回答的核心问题是：**哪些状态归服务端，哪些归前端**。
+
+| 归属 | 内容 | 同步方式 |
+| --- | --- | --- |
+| 服务端 | `goals` / `items` / `reviews` / `memory` | 后端是唯一真相，收到快照**整体替换** |
+| 前端 | `messages` / `streaming` / `error` | 只存在于这个页面，刷新即弃 |
+
+三处容易写错的地方，store 里专门处理了：
+
+**1. 乐观更新要能回滚。** 勾选待办时先翻转本地状态、立刻响应界面，
+但请求失败必须把状态改回去。否则界面显示"已完成"、实际没完成，
+用户再点一次就点不动了。
+
+**2. 流式请求可能乱序返回。** 快速连发两条消息时，先发的请求可能后到。
+用请求序号丢弃过期响应，避免旧回复覆盖新回复。
+
+**3. 快照整体替换而不是合并。** 后端推来的 `state` 是全量快照。
+局部合并（只更新 `items` 保留 `goals`）在后端同时改了多个集合时会留下脏数据。
+
+派生状态（今日待办、进度、长期记忆的有效/被取代分组）一律用 `computed`，
+不在 state 里存冗余副本。
+
+### 后端接口
+
+| 方法 | 路径 | 用途 |
+| --- | --- | --- |
+| GET | `/health` | 健康检查 |
+| GET | `/api/state` | 全量状态快照 |
+| POST | `/api/chat` | **SSE 流式对话** |
+| POST | `/api/tasks/{id}/toggle` | 切换待办完成状态 |
+| POST | `/api/goals` | 创建目标并排计划 |
+| POST | `/api/rollover` | 模拟跨天 |
+| POST | `/api/reset` | 清空全部数据 |
+
+所有写操作都串行化（进程内一把锁）：目标、待办、记忆是**全局状态**，
+不是每个连接一份，两个并发请求同时改记忆会让条数对不上。
+
+### 后端自检
+
+```bash
+cd Demos/examples
+uv run --project .. python -m study_planner.backend.selftest
+```
+
+46 项检查，覆盖 SSE 事件序列、状态快照、预算影响排期、任务勾选、
+跨天滚动、参数校验。用 FastAPI 的 `TestClient`，不占端口、不联网。
 
 ---
 
@@ -212,7 +335,11 @@ uv run --project .. python -m study_planner.selftest
 | `agent.py` | 编排：路由 → 召回 → 执行 → 回写 |
 | `storage.py` | JSON 持久化 |
 | `main.py` | 命令行入口 |
-| `selftest.py` | 自检脚本 |
+| `selftest.py` | 核心自检（97 项） |
+| `backend/main.py` | FastAPI 服务：SSE + 状态接口 |
+| `backend/selftest.py` | 后端自检（46 项） |
+| `frontend/src/stores/planner.js` | Pinia 状态中枢 |
+| `frontend/src/api.js` | API 客户端 + SSE 帧解析 |
 
 ---
 

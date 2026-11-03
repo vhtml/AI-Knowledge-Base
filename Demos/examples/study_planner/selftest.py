@@ -477,6 +477,32 @@ def test_budget_capture() -> None:
         check("旧预算被标记取代但保留", len(superseded) == 1, str(len(superseded)))
 
 
+def test_goal_dedup() -> None:
+    """同一个目标重复记录应该是更新，不是追加两条。"""
+
+    print("\n[17] 目标去重")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        storage = __import__("study_planner.storage", fromlist=["Storage"]).Storage(root)
+        planner = StudyPlanner(memory=storage.build_memory())
+
+        planner.handle("我想学 Python 数据分析")
+        check("首次记录产生一个目标", len(planner.goals) == 1, str(len(planner.goals)))
+
+        planner.handle("我想学 Python 数据分析")
+        check("重复记录不新增目标", len(planner.goals) == 1, str(len(planner.goals)))
+
+        ids = [goal.id for goal in planner.goals]
+        check("目标 id 不重复", len(ids) == len(set(ids)), str(ids))
+
+        planner.handle("生成计划")
+        first_count = len(planner.items)
+
+        planner.handle("生成计划")
+        check("重复生成计划不叠加待办", len(planner.items) == first_count, f"{first_count} → {len(planner.items)}")
+
+
 def _item(category: str, content: str):
     """造一条长期记忆条目。"""
 
@@ -514,6 +540,7 @@ def main() -> int:
     test_end_to_end()
     test_long_term_budget_affects_plan()
     test_budget_capture()
+    test_goal_dedup()
 
     print("\n" + "=" * 56)
     print(f"通过 {PASSED} 项，失败 {FAILED} 项")
