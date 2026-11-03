@@ -28,7 +28,7 @@
           <mxGeometry x="510" y="48" width="570" height="68" as="geometry" />
         </mxCell>
 
-        <mxCell id="L3" value="编排与领域层 · agent.py / planner.py / review.py" style="swimlane;startSize=32;horizontal=1;html=0;convertToSvg=1;svgWhiteSpace=wrap;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=1;fontSize=13;fontColor=#333333;rounded=1;arcSize=6;" vertex="1" parent="1">
+        <mxCell id="L3" value="编排与领域层 · backend/agent.py / planner.py / review.py" style="swimlane;startSize=32;horizontal=1;html=0;convertToSvg=1;svgWhiteSpace=wrap;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=1;fontSize=13;fontColor=#333333;rounded=1;arcSize=6;" vertex="1" parent="1">
           <mxGeometry x="80" y="380" width="1100" height="210" as="geometry" />
         </mxCell>
         <mxCell id="c_handle" value="handle() 编排 · 每轮流程&#10;召回 → 执行 → 回写　|　detect_intent() 意图路由　|　每请求 reporter（作用域切换，SSE 各请求独立）" style="rounded=1;arcSize=10;whiteSpace=wrap;html=0;convertToSvg=1;svgWhiteSpace=wrap;fillColor=#ffffff;strokeColor=#d6b656;fontSize=12;fontColor=#333333;" vertex="1" parent="L3">
@@ -41,7 +41,7 @@
           <mxGeometry x="540" y="140" width="520" height="58" as="geometry" />
         </mxCell>
 
-        <mxCell id="L4" value="记忆层 · memory.py　★ 本示例重点" style="swimlane;startSize=32;horizontal=1;html=0;convertToSvg=1;svgWhiteSpace=wrap;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1;fontSize=13;fontColor=#333333;strokeWidth=2;rounded=1;arcSize=6;" vertex="1" parent="1">
+        <mxCell id="L4" value="记忆层 · backend/memory.py　★ 本示例重点" style="swimlane;startSize=32;horizontal=1;html=0;convertToSvg=1;svgWhiteSpace=wrap;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1;fontSize=13;fontColor=#333333;strokeWidth=2;rounded=1;arcSize=6;" vertex="1" parent="1">
           <mxGeometry x="80" y="640" width="1100" height="300" as="geometry" />
         </mxCell>
         <mxCell id="c_short" value="ShortTermMemory 短期工作区&#10;当天有效 · 满了折叠成摘要&#10;跨天清空 · 重复提及累加" style="rounded=1;arcSize=10;whiteSpace=wrap;html=0;convertToSvg=1;svgWhiteSpace=wrap;fillColor=#ffffff;strokeColor=#9673a6;fontSize=12;fontColor=#333333;" vertex="1" parent="L4">
@@ -57,7 +57,7 @@
           <mxGeometry x="520" y="180" width="340" height="84" as="geometry" />
         </mxCell>
 
-        <mxCell id="L5" value="存储层 · storage.py（JSON 持久化）" style="swimlane;startSize=32;horizontal=1;html=0;convertToSvg=1;svgWhiteSpace=wrap;fillColor=#f8cecc;strokeColor=#b85450;fontStyle=1;fontSize=13;fontColor=#333333;rounded=1;arcSize=6;" vertex="1" parent="1">
+        <mxCell id="L5" value="存储层 · backend/storage.py（JSON 持久化）" style="swimlane;startSize=32;horizontal=1;html=0;convertToSvg=1;svgWhiteSpace=wrap;fillColor=#f8cecc;strokeColor=#b85450;fontStyle=1;fontSize=13;fontColor=#333333;rounded=1;arcSize=6;" vertex="1" parent="1">
           <mxGeometry x="80" y="990" width="1100" height="140" as="geometry" />
         </mxCell>
         <mxCell id="c_json1" value="goals.json · plans.json&#10;目标与每日待办" style="rounded=1;arcSize=10;whiteSpace=wrap;html=0;convertToSvg=1;svgWhiteSpace=wrap;fillColor=#ffffff;strokeColor=#b85450;fontSize=12;fontColor=#333333;" vertex="1" parent="L5">

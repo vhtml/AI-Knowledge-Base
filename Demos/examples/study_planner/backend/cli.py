@@ -3,8 +3,8 @@
 必须在 Demos/examples 目录下运行（包在 examples 下）：
 
     cd Demos/examples
-    uv run --project .. python -m study_planner                # 交互模式
-    uv run --project .. python -m study_planner --task "我想学 Python"
+    uv run --project .. python -m study_planner.backend         # 交互模式
+    uv run --project .. python -m study_planner.backend --task "我想学 Python"
 """
 
 from __future__ import annotations

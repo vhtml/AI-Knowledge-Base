@@ -85,13 +85,13 @@ for item in self.memory.long.items:          # ← 扫档案，不是召回
 cd Demos/examples
 
 # 交互模式
-uv run --project .. python -m study_planner
+uv run --project .. python -m study_planner.backend
 
 # 只跑一句话
-uv run --project .. python -m study_planner --task "我想学 Python 数据分析"
+uv run --project .. python -m study_planner.backend --task "我想学 Python 数据分析"
 
 # 指定数据目录（默认 ~/.study-planner）
-uv run --project .. python -m study_planner --data-dir ./tmp-study
+uv run --project .. python -m study_planner.backend --data-dir ./tmp-study
 ```
 
 裸解释器也能跑（不依赖任何第三方包）：
@@ -134,7 +134,7 @@ cd Demos/examples && python3 -m study_planner --task "我想学 Python 数据分
 **第一步，记目标**——它直接进长期记忆并钉住，不随当天工作区清空：
 
 ```console
-$ uv run --project .. python -m study_planner --data-dir ./tmp-study --task "我想学 Python 数据分析"
+$ uv run --project .. python -m study_planner.backend --data-dir ./tmp-study --task "我想学 Python 数据分析"
   · [召回] 记忆检索 ✓ · 无命中
   · [记录目标] Python 数据分析 ✓ · g-e8096634c0
   · [长期记忆] 目标已入库 ✓ · 目标钉住，不随工作区清空
@@ -146,7 +146,7 @@ $ uv run --project .. python -m study_planner --data-dir ./tmp-study --task "我
 **第二步，说出时间预算**——预算是长期约束，被单独识别并记进档案：
 
 ```console
-$ uv run --project .. python -m study_planner --data-dir ./tmp-study --task "我每天只有 30 分钟"
+$ uv run --project .. python -m study_planner.backend --data-dir ./tmp-study --task "我每天只有 30 分钟"
   · [闲聊] 已记录 ✓ · 写入短期记忆
   · [长期记忆] 时间预算已记下 ✓ · 每天 30 分钟
   · [回写] 记忆写入 ✓ · 短期 +1 条、长期 +1 条
@@ -155,7 +155,7 @@ $ uv run --project .. python -m study_planner --data-dir ./tmp-study --task "我
 **第三步，排计划**——注意排期依据写的是"长期记忆"而不是默认值：
 
 ```console
-$ uv run --project .. python -m study_planner --data-dir ./tmp-study --task "生成计划"
+$ uv run --project .. python -m study_planner.backend --data-dir ./tmp-study --task "生成计划"
   · [生成计划] Python 数据分析 ✓ · 每日 30 分钟（长期记忆：每天可学习时间：30 分钟）
   · [排期依据] 长期记忆：每天可学习时间：30 分钟 ✓ · 每日 30 分钟
   · [回写] 记忆写入 ✓ · 短期 +1 条
@@ -179,7 +179,7 @@ $ uv run --project .. python -m study_planner --data-dir ./tmp-study --task "生
 
 ```bash
 cd Demos/examples
-uv run --project .. python -m study_planner.selftest
+uv run --project .. python -m study_planner.backend.selftest
 ```
 
 97 项检查，覆盖记忆的行为约定：
@@ -208,9 +208,17 @@ FastAPI + Vue 3 + SSE。把规划师变成一个可以看见"记忆在动"的工
 
 ```
 Demos/examples/study_planner/
-├── backend/          FastAPI 服务
+├── backend/          全部 Python（FastAPI 服务 + 领域内核 + 命令行）
 │   ├── main.py       SSE 对话流 + 状态快照接口
-│   └── selftest.py   后端自检（46 项）
+│   ├── cli.py        命令行入口（python -m study_planner.backend）
+│   ├── memory.py     两级记忆内核
+│   ├── agent.py      编排：路由 → 召回 → 执行 → 回写
+│   ├── planner.py    目标 → 阶段 → 每日待办
+│   ├── review.py     每日复盘
+│   ├── storage.py    JSON 持久化
+│   ├── models.py     数据结构
+│   ├── selftest.py   核心自检（97 项）
+│   └── selftest_api.py 接口自检（46 项）
 └── frontend/         Vue 3 + Vite + Pinia
     ├── src/
     │   ├── api.js            API 客户端（含 SSE 帧解析）
@@ -312,11 +320,11 @@ Pinia store 回答的核心问题是：**哪些状态归服务端，哪些归前
 所有写操作都串行化（进程内一把锁）：目标、待办、记忆是**全局状态**，
 不是每个连接一份，两个并发请求同时改记忆会让条数对不上。
 
-### 后端自检
+### 接口自检
 
 ```bash
 cd Demos/examples
-uv run --project .. python -m study_planner.backend.selftest
+uv run --project .. python -m study_planner.backend.selftest_api
 ```
 
 46 项检查，覆盖 SSE 事件序列、状态快照、预算影响排期、任务勾选、
@@ -347,16 +355,16 @@ SVG 里的文字是纯 SVG 文本，不依赖 `foreignObject`，在任意渲染�
 
 | 文件 | 用途 |
 | --- | --- |
-| `models.py` | 数据结构：目标 / 待办 / 复盘 / 记忆条目 |
-| `memory.py` | **两级记忆内核**：折叠、槽位、召回、强化、晋升 |
-| `planner.py` | 目标 → 阶段 → 每日待办（规则拆解） |
-| `review.py` | 每日复盘：对账、找规律、沉淀 |
-| `agent.py` | 编排：路由 → 召回 → 执行 → 回写 |
-| `storage.py` | JSON 持久化 |
-| `main.py` | 命令行入口 |
-| `selftest.py` | 核心自检（97 项） |
+| `backend/models.py` | 数据结构：目标 / 待办 / 复盘 / 记忆条目 |
+| `backend/memory.py` | **两级记忆内核**：折叠、槽位、召回、强化、晋升 |
+| `backend/planner.py` | 目标 → 阶段 → 每日待办（规则拆解） |
+| `backend/review.py` | 每日复盘：对账、找规律、沉淀 |
+| `backend/agent.py` | 编排：路由 → 召回 → 执行 → 回写 |
+| `backend/storage.py` | JSON 持久化 |
+| `backend/cli.py` | 命令行入口（`python -m study_planner.backend`） |
 | `backend/main.py` | FastAPI 服务：SSE + 状态接口 |
-| `backend/selftest.py` | 后端自检（46 项） |
+| `backend/selftest.py` | 核心自检（97 项） |
+| `backend/selftest_api.py` | 接口自检（46 项） |
 | `frontend/src/stores/planner.js` | Pinia 状态中枢 |
 | `frontend/src/api.js` | API 客户端 + SSE 帧解析 |
 | `architecture.drawio` | 架构图源文件 |

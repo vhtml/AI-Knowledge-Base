@@ -31,10 +31,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from ..agent import StepRecord, StudyPlanner
-from ..memory import MemoryManager
-from ..models import CATEGORY_GOAL, CATEGORY_NOTE, Goal, PlanItem, Review
-from ..storage import Storage
+from .agent import StepRecord, StudyPlanner
+from .memory import MemoryManager
+from .models import CATEGORY_GOAL, CATEGORY_NOTE, Goal, PlanItem, Review
+from .storage import Storage
 
 DEFAULT_DATA_DIR = Path.home() / ".study-planner"
 
@@ -309,7 +309,7 @@ def create_goal(body: GoalRequest) -> dict[str, Any]:
     id 由标题和日期派生，重复提交会撞上同一个 id。
     """
 
-    from ..models import stable_id, today_str
+    from .models import stable_id, today_str
 
     with session.lock:
         goal_id = stable_id("g", body.title, today_str())
@@ -334,7 +334,7 @@ def create_goal(body: GoalRequest) -> dict[str, Any]:
             importance=5,
         )
 
-        from ..planner import generate_plan
+        from .planner import generate_plan
 
         draft = generate_plan(goal, daily_minutes=body.daily_minutes)
 
