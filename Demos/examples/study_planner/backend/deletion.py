@@ -56,12 +56,8 @@ class DeletionService:
         result, good_length = [], len(lines[0].encode())
         for index, line in enumerate(lines[1:]):
             if not line.endswith("\n") and index == len(lines) - 2:
-                # 未写完整的尾部没有资格触发数据库删除；追加前先移除残片。
-                handle.seek(good_length)
-                handle.truncate()
-                handle.flush()
-                os.fsync(handle.fileno())
-                break
+                # 恢复旧快照时无法证明尾部是否已经提交，宁可阻断也不能复活内容。
+                raise ValueError("删除清单尾部截断，需要核验修复后再开放档案")
             entry = json.loads(line)
             if hashlib.sha256(dumps(entry["intent"]).encode()).hexdigest() != entry["sha256"]:
                 raise ValueError("删除清单校验失败")
@@ -137,7 +133,7 @@ class DeletionService:
             if original:
                 pending.append(original[0])
             if db.execute("SELECT 1 FROM turns WHERE id=?", (source_id,)).fetchone():
-                db.execute("UPDATE turns SET facts='',reply='',error_code='SOURCE_DELETED' WHERE id=?", (source_id,))
+                db.execute("UPDATE turns SET facts='',reply='',error_code='SOURCE_DELETED',status=CASE WHEN status IN ('accepted','analyzing') THEN 'cancelled' ELSE status END WHERE id=?", (source_id,))
                 pending.extend(r[0] for r in db.execute("SELECT id FROM messages WHERE turn_id=?", (source_id,)))
         for gid in intent.get("goals", []):
             db.execute("DELETE FROM plan_items WHERE goal_id=?", (gid,))

@@ -11,7 +11,7 @@ const editing = ref(null)
 const deleting = ref(null)
 
 function editMemory(item) {
-  editing.value = { item, content: item.content, value: '', scope: 'default' }
+  editing.value = { item, content: item.content, value: item.budget_value ?? '', scope: item.budget_scope ?? 'default' }
 }
 
 async function saveMemory() {
@@ -150,6 +150,7 @@ function goalTitle(goalId) {
     <div v-else class="panel">
       <div class="panel-head">
         <h2>记忆</h2>
+        <button type="button" @click="store.exportArchive()">导出档案</button>
         <span class="panel-sub">
           短期 {{ store.memoryStats.short ?? 0 }} · 长期 {{ store.memoryStats.long ?? 0 }}
         </span>
@@ -159,7 +160,7 @@ function goalTitle(goalId) {
         <h3>纠正记忆</h3>
         <label>内容<textarea v-model="editing.content" required maxlength="1000"></textarea></label>
         <label>每日预算（仅修改时间时填写，分钟）<input v-model="editing.value" type="number" min="15" max="480" /></label>
-        <label>适用范围<select v-model="editing.scope"><option value="default">每天默认</option><option value="weekday">工作日</option><option value="weekend">周末</option></select></label>
+        <label>适用范围<select v-model="editing.scope"><option v-if="editing.scope.startsWith('date:')" :value="editing.scope">{{ editing.scope.slice(5) }} 当天</option><option value="default">每天默认</option><option value="weekday">工作日</option><option value="weekend">周末</option></select></label>
         <button type="submit">保存纠正</button><button type="button" @click="editing = null">取消</button>
       </form>
       <div v-if="deleting" class="memory-editor" role="alert">

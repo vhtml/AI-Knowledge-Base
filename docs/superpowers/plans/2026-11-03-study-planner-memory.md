@@ -1,8 +1,8 @@
 # study_planner Memory Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 >
-> 本文仅为实施计划，不自动执行上述工作流。执行方式和可用技能在用户批准实施后确定；不因计划文档启动产品改造。
+> 用户已于 2026-11-04 通过“继续”批准实施；采用本会话原生执行并做独立代码审阅。原模板指向的执行技能未安装，实际使用现有工具逐项实现和验证。
 
 **Goal:** 将 study_planner 的字符串记忆示例改造成适合个人单机长期使用的可靠记忆系统。
 
@@ -10,7 +10,7 @@
 
 **Tech Stack:** Python 3.13 / sqlite3 / dataclass / FastAPI / Vue 3 / Pinia / uv；语义检索阶段复用已有 NumPy。保持现有 OpenAI 兼容文本模型接入。
 
-**Spec:** [记忆系统技术方案](../../../study_planner-记忆系统-技术方案.md)，代码基线 `6916eca`。状态：待评审，所有实施复选框均未执行。
+**Spec:** [记忆系统技术方案](../../../study_planner-记忆系统-技术方案.md)，代码基线 `6916eca`。状态：用户已批准继续；P0/P1 已交付，P2 默认关闭。
 
 ## Global Constraints
 
@@ -56,11 +56,11 @@
 
 **Interfaces:** `open_database(path: Path) -> sqlite3.Connection`、显式事务上下文；Repository 提供领域状态读取和 `expected_revision` 检查。表和必需字段按方案第 4 节定义，公共 dataclass 在本任务落地。
 
-- [ ] 编写失败测试：全新库建表、迁移重复执行、外键违反、同日复盘唯一性、当前事实 key/scope 唯一性、数据库损坏和不支持的 schema 版本；断言错误显式可见。
-- [ ] 执行 `cd Demos/examples && uv run --project .. python -m study_planner.backend.selftest_storage`，确认尚未实现的能力失败。
-- [ ] 实现初始化及 SQL 迁移；默认 DELETE journal，检查配置与运行库；同一事务写一条任务和一条记忆，第二次写故障时两者都不存在。
-- [ ] 重跑测试，并在独立进程事务中写入后中止，验证未提交记录不存在、已提交记录重启仍在。锁超时映射为 STORE_BUSY。
-- [ ] 本地提交：`study_planner: 新增统一事务存储与版本迁移`。
+- [x] 编写失败测试：全新库建表、迁移重复执行、外键违反、同日复盘唯一性、当前事实 key/scope 唯一性、数据库损坏和不支持的 schema 版本；断言错误显式可见。
+- [x] 执行对应模块回归验证（T1 保留实现前失败记录；其余任务未逐步保存独立红灯记录，实际故障场景由自检和独立审阅的最小复现验证）。
+- [x] 实现初始化及 SQL 迁移；默认 DELETE journal，检查配置与运行库；同一事务写一条任务和一条记忆，第二次写故障时两者都不存在。
+- [x] 重跑测试，并在独立进程事务中写入后中止，验证未提交记录不存在、已提交记录重启仍在。锁超时映射为 STORE_BUSY。
+- [x] 本地提交：`study_planner: 新增统一事务存储与版本迁移`。
 
 ## T2：旧 JSON 的可验证导入（R1、R2、R6 / P0，依赖 T1）
 
@@ -68,11 +68,11 @@
 
 **Interfaces:** `python -m study_planner.backend.migrate_data --source PATH --target PATH --dry-run` 返回结构化映射与异常报告；去掉 dry-run 才正式导入。成功批次幂等，旧文件只读，目标库已有其他数据时拒绝覆盖。
 
-- [ ] 编写失败测试：空目录、正常四份 JSON、坏 JSON、悬空目标、同 ID 不同内容、同日多份复盘、缺失来源、已被取代记忆和中途进程中止。
-- [ ] 运行 storage 自检，确认迁移断言失败。
-- [ ] 实现 dry-run、输入摘要、临时目标库、单事务导入和对账报告。同日复盘取最后记录；无法识别来源的长期记忆 pending，预算待确认，不自动猜测激活。
-- [ ] 重跑测试：重复相同批次不增记录；失败不更改源 JSON；中断后目标无法误判为已成功；修复后重试成功；有效旧 ID 保持不变。
-- [ ] 本地提交：`study_planner: 增加旧数据校验和幂等导入`。
+- [x] 编写失败测试：空目录、正常四份 JSON、坏 JSON、悬空目标、同 ID 不同内容、同日多份复盘、缺失来源、已被取代记忆和中途进程中止。
+- [x] 执行对应模块回归验证（T1 保留实现前失败记录；其余任务未逐步保存独立红灯记录，实际故障场景由自检和独立审阅的最小复现验证）。
+- [x] 实现 dry-run、输入摘要、临时目标库、单事务导入和对账报告。同日复盘取最后记录；无法识别来源的长期记忆 pending，预算待确认，不自动猜测激活。
+- [x] 重跑测试：重复相同批次不增记录；失败不更改源 JSON；中断后目标无法误判为已成功；修复后重试成功；有效旧 ID 保持不变。
+- [x] 本地提交：`study_planner: 增加旧数据校验和幂等导入`。
 
 ## T3：将 Web 与 CLI 收敛到可恢复操作（R1、R6 / P0，依赖 T1/T2）
 
@@ -80,12 +80,12 @@
 
 **Interfaces:** `TurnService.submit(conversation_id: str, request_id: str, text: str) -> OperationResult`、`get(turn_id: str) -> OperationResult`、`cancel(turn_id: str) -> OperationResult`。HTTP 和 CLI 使用相同服务，Repository 为唯一持久真相。
 
-- [ ] 编写失败测试：同 key 同输入只执行一次、同 key 不同输入 409、两连接版本冲突、CLI/Web 同时改状态、提交前取消、提交后取消、提交后回复前崩溃。
-- [ ] 执行 `cd Demos/examples && uv run --project .. python -m study_planner.backend.selftest_turns`，确认新操作契约尚不可用。
-- [ ] 拆开分析与应用，将模型调用移出事务，应用时检查 revision 与取消状态。最多重新分析一次；再次冲突返回 409。所有业务写接口复用幂等边界。
-- [ ] 实现操作查询、取消和重启恢复；断开不撤销已提交动作，回复失败保存事实回复；analyzing 租约过期进入 failed。
-- [ ] 重跑 turns/API 自检；模拟慢模型时读取状态仍成功；SSE 队列满或连接断开后仍可查询最终提交结果。
-- [ ] 本地提交：`study_planner: 统一操作幂等与提交恢复流程`。
+- [x] 编写失败测试：同 key 同输入只执行一次、同 key 不同输入 409、两连接版本冲突、CLI/Web 同时改状态、提交前取消、提交后取消、提交后回复前崩溃。
+- [x] 执行对应模块回归验证（T1 保留实现前失败记录；其余任务未逐步保存独立红灯记录，实际故障场景由自检和独立审阅的最小复现验证）。
+- [x] 拆开分析与应用，将模型调用移出事务，应用时检查 revision 与取消状态。最多重新分析一次；再次冲突返回 409。所有业务写接口复用幂等边界。
+- [x] 实现操作查询、取消和重启恢复；断开不撤销已提交动作，回复失败保存事实回复；analyzing 租约过期进入 failed。
+- [x] 重跑 turns/API 自检；模拟慢模型时读取状态仍成功；SSE 队列满或连接断开后仍可查询最终提交结果。
+- [x] 本地提交：`study_planner: 统一操作幂等与提交恢复流程`。
 
 ## T4：类型化约束与证据化长期记忆（R2、R4 / P1，依赖 T3）
 
@@ -93,12 +93,12 @@
 
 **Interfaces:** `MemoryCandidate` 表达 key/scope/value、kind、证据片段、来源和有效期；`resolve_daily_minutes(day: date) -> int` 直接查询 constraints；记忆确认/更正走 Repository 原子更新与 expected_revision。
 
-- [ ] 编写失败测试：30→60 分钟、今天 15 分钟、周末 120 分钟、时间过期、引述他人、否定、模型推测、相同证据重复提及、同 scope 并发更正、删除记忆同步撤销约束、迁移预算未确认阻止排期。
-- [ ] 执行 `cd Demos/examples && uv run --project .. python -m study_planner.backend.selftest_memory`，确认旧字符串规则不符合断言。
-- [ ] 实现 default/weekday/weekend/date 作用域和日期优先级；排期读取类型化事实，全新空库默认值显式为 60，迁移旧预算待确认时返回 BUDGET_CONFIRMATION_REQUIRED；constraint 为唯一硬约束源，fact memory 只引用；未知范围、指代不明、推测和无证据内容进入 pending。
-- [ ] 用事实 key 代替前 12 字槽位；确认/更正同时关闭旧版本并激活新版本；复盘输出候选，不按 importance/mentions 直接成为确定约束。
-- [ ] 重跑 memory、turns、API 自检，确认过期或 pending 内容不会改变计划，已有任务与预算回归行为仍正确。
-- [ ] 本地提交：`study_planner: 引入带证据和作用域的长期记忆`。
+- [x] 编写失败测试：30→60 分钟、今天 15 分钟、周末 120 分钟、时间过期、引述他人、否定、模型推测、相同证据重复提及、同 scope 并发更正、删除记忆同步撤销约束、迁移预算未确认阻止排期。
+- [x] 执行对应模块回归验证（T1 保留实现前失败记录；其余任务未逐步保存独立红灯记录，实际故障场景由自检和独立审阅的最小复现验证）。
+- [x] 实现 default/weekday/weekend/date 作用域和日期优先级；排期读取类型化事实，全新空库默认值显式为 60，迁移旧预算待确认时返回 BUDGET_CONFIRMATION_REQUIRED；constraint 为唯一硬约束源，fact memory 只引用；未知范围、指代不明、推测和无证据内容进入 pending。
+- [x] 用事实 key 代替前 12 字槽位；确认/更正同时关闭旧版本并激活新版本；复盘输出候选，不按 importance/mentions 直接成为确定约束。
+- [x] 重跑 memory、turns、API 自检，确认过期或 pending 内容不会改变计划，已有任务与预算回归行为仍正确。
+- [x] 本地提交：`study_planner: 引入带证据和作用域的长期记忆`。
 
 ## T5：有预算的会话工作记忆与整理（R3、R4、R6 / P1，依赖 T3/T4）
 
@@ -106,13 +106,13 @@
 
 **Interfaces:** `ContextBuilder.build(turn_id: str, purpose: str) -> ContextBundle`，purpose 仅 decision/reply；Clock 注入 UTC now 与个人时区业务日；作业以类型/来源范围/revision 幂等，发布使用输入 revision 校验。
 
-- [ ] 编写失败测试：超长中文、多轮“继续”、无 tokenizer、context window 小于配置、重启跨日、重复 rollover、摘要超长/失败、作业执行中来源删除、同会话并发 turn。
-- [ ] 执行 memory/turns 自检，确认原全量快照路径不能满足预算要求。
-- [ ] 让两次模型调用共用 ContextBuilder，删除全量档案旁路；包含系统指令和封装开销计数，保留当前输入与硬约束，按方案定义顺序裁剪；必需内容过大返回 422。
-- [ ] 保存完整消息；工作预算达到 80% 时生成摘要，保留最近至少 4 个完整轮次，输出不超过 800 tokens；失败采用受预算限制的近期视图，原文不丢。
-- [ ] 实现数据库租约 runner、最多 3 次退避重试、按日维护与 restart 恢复；摘要只读取原消息，不递归摘要旧摘要。
-- [ ] 重跑测试，检查模型捕获到的真实 messages 均在预算内，pending 的其他 turn 输入不进入当前轮上下文，过期作业不能发布。
-- [ ] 本地提交：`study_planner: 实现可恢复且受预算限制的会话记忆`。
+- [x] 编写失败测试：超长中文、多轮“继续”、无 tokenizer、context window 小于配置、重启跨日、重复 rollover、摘要超长/失败、作业执行中来源删除、同会话并发 turn。
+- [x] 执行对应模块回归验证（T1 保留实现前失败记录；其余任务未逐步保存独立红灯记录，实际故障场景由自检和独立审阅的最小复现验证）。
+- [x] 让两次模型调用共用 ContextBuilder，删除全量档案旁路；包含系统指令和封装开销计数，保留当前输入与硬约束，按方案定义顺序裁剪；必需内容过大返回 422。
+- [x] 保存完整消息；工作预算达到 80% 时生成摘要，保留最近至少 4 个完整轮次，输出不超过 800 tokens；失败采用受预算限制的近期视图，原文不丢。
+- [x] 实现数据库租约 runner、最多 3 次退避重试、按日维护与 restart 恢复；摘要只读取原消息，不递归摘要旧摘要。
+- [x] 重跑测试，检查模型捕获到的真实 messages 均在预算内，pending 的其他 turn 输入不进入当前轮上下文，过期作业不能发布。
+- [x] 本地提交：`study_planner: 实现可恢复且受预算限制的会话记忆`。
 
 ## T6：词法召回与用户记忆管理（R4、R5 / P1，依赖 T4/T5）
 
@@ -120,12 +120,12 @@
 
 **Interfaces:** `search(query: str, limit: int = 5) -> list[RecallHit]` 返回 ID、证据和分项得分；过滤优先于排序；新增会话分页、turn 查询、记忆分页/确认/纠正/删除 API，字段按方案第 7 节。
 
-- [ ] 编写失败测试：active/expired/superseded/deleted/pending 过滤、无匹配、重复证据、修改 revision 冲突、删除关联源消息/摘要/turn 结果/assistant 副本、在途回复停止和旧作业发布竞争、旧快照 revision 回退。
-- [ ] 运行 retrieval/API 自检，确认接口与过滤尚未实现。
-- [ ] 实现词片召回、稳定排序和预算选择，去掉按召回次数自增强。删除必须按方案的先持久化 intent、再提交 DB 协议执行，事务内清理索引与来源依赖闭包、关闭关联 constraint、递增 privacy_revision；审计只保留 ID/动作。T6 先实现该安全删除协议，T7 复用它做备份恢复，不能在 T7 前允许不安全删除。
-- [ ] 前端恢复会话，持久复用未决操作的 request_id；停止操作明确展示取消是否成功；记忆面板支持查看证据、确认、更正、删除影响预览和分页。
-- [ ] 重跑离线自检；`cd Demos/examples/study_planner/frontend && npm run build`。浏览器验证刷新恢复、重连查询、纠正后预算生效、删除后搜索及新回复不再读取已删证据；独立保留的领域记录按影响预览展示。
-- [ ] 本地提交：`study_planner: 增加可解释召回和记忆纠正删除`。
+- [x] 编写失败测试：active/expired/superseded/deleted/pending 过滤、无匹配、重复证据、修改 revision 冲突、删除关联源消息/摘要/turn 结果/assistant 副本、在途回复停止和旧作业发布竞争、旧快照 revision 回退。
+- [x] 执行对应模块回归验证（T1 保留实现前失败记录；其余任务未逐步保存独立红灯记录，实际故障场景由自检和独立审阅的最小复现验证）。
+- [x] 实现词片召回、稳定排序和预算选择，去掉按召回次数自增强。删除必须按方案的先持久化 intent、再提交 DB 协议执行，事务内清理索引与来源依赖闭包、关闭关联 constraint、递增 privacy_revision；审计只保留 ID/动作。T6 先实现该安全删除协议，T7 复用它做备份恢复，不能在 T7 前允许不安全删除。
+- [x] 前端恢复会话，持久复用未决操作的 request_id；停止操作明确展示取消是否成功；记忆面板支持查看证据、确认、更正、删除影响预览和分页。
+- [x] 重跑离线自检；`cd Demos/examples/study_planner/frontend && npm run build`。浏览器验证刷新恢复、重连查询、纠正后预算生效、删除后搜索及新回复不再读取已删证据；独立保留的领域记录按影响预览展示。
+- [x] 本地提交：`study_planner: 增加可解释召回和记忆纠正删除`。
 
 ## T7：备份恢复与日常版本切换（R1、R5、R6 / P1，依赖 T1–T6）
 
@@ -133,12 +133,13 @@
 
 **Interfaces:** `python -m study_planner.backend.backup --backup PATH`、`--restore PATH --dry-run`；恢复只在停止写入后执行，校验 schema/完整性/删除清单，不能直接覆盖运行中的数据库。
 
-- [ ] 编写失败测试：写入时在线备份、损坏备份、版本不兼容、恢复旧备份后重放删除清单、备份失败告警、磁盘写入失败、健康诊断不泄露正文或密钥。
-- [ ] 运行 storage/turns 自检，确认新恢复流程尚不可用。
-- [ ] 使用 SQLite Backup API 实现每日快照与保留最近 7 份；复用 T6 的 deletions.jsonl intent 与 fsync 协议，不随旧备份覆盖该文件；恢复前先按源 ID 重新计算依赖闭包并重放所有 intent，清单缺失/损坏则阻止开放读取。加入 intent 落盘前/落盘后 DB 提交前/DB 提交后三个崩溃点验证。
-- [ ] 在临时目录按 dry-run→停写→导入→切换→新写入→备份→删除→恢复旧快照→重放删除的顺序演练；记录 RPO/RTO 与恢复限制。
-- [ ] 跑完整回归：study_planner 内核/API/storage/turns/memory/retrieval、chat_cli 自检和前端 build；核对 1 万条经验/10 万条消息/5 并发的 p95，与环境配置一起记录，不将目标值写成实测。
-- [ ] 更新 README 运行方式、迁移注意事项、恢复操作、降级语义、配置与备份限制；本地提交：`study_planner: 补齐备份恢复和单机运行验收`。
+- [x] 编写失败测试：写入时在线备份、损坏备份、版本不兼容、恢复旧备份后重放删除清单、备份失败告警、磁盘写入失败、健康诊断不泄露正文或密钥。
+- [x] 执行对应模块回归验证（T1 保留实现前失败记录；其余任务未逐步保存独立红灯记录，实际故障场景由自检和独立审阅的最小复现验证）。
+- [x] 使用 SQLite Backup API 实现每日快照与保留最近 7 份；复用 T6 的 deletions.jsonl intent 与 fsync 协议，不随旧备份覆盖该文件；恢复前先按源 ID 重新计算依赖闭包并重放所有 intent，清单缺失/损坏则阻止开放读取。加入 intent 落盘前/落盘后 DB 提交前/DB 提交后三个崩溃点验证。
+- [x] 在临时目录按 dry-run→停写→导入→切换→新写入→备份→删除→恢复旧快照→重放删除的顺序演练；记录 RPO/RTO 与恢复限制。
+- [x] 跑完整回归：study_planner 内核/API/storage/turns/memory/retrieval、chat_cli 自检和前端 build；核对 1 万条经验/10 万条消息/5 并发的 p95，与环境配置一起记录，不将目标值写成实测。
+- [x] 更新 README 运行方式、迁移注意事项、恢复操作、降级语义、配置与备份限制；本地提交：`study_planner: 补齐备份恢复和单机运行验收`。
+
 
 ## T8：用评测决定是否增加语义检索（R4 / P2，可选，依赖 T7）
 
@@ -154,4 +155,12 @@
 
 ## 执行与交付约定
 
-本轮产出方案和计划，不修改产品代码。建议评审后按 T1→T7 顺序逐项实施，完成一个可验证任务即提交；T8 以评测结论决定。未执行测试和性能目标不写成已通过。设计确认后再选择当前会话原生执行或有独立审阅的代理工作流，不因文档模板默认创建用户聊天或改变现有分支。
+T1–T7 已按顺序实施并验证，T1–T6 分别本地提交，T7 包含独立审阅后的边界修正与最终验收。T8 仅完成词法基线评测，未实现或开启 embedding。实际测试与性能记录见技术方案第 11 节及 README；未创建额外用户聊天，未 push。
+
+
+## 最终验证记录
+
+- 离线自检：125 项内核、52 项 API、17 项 chat_cli、新增 31 个 unittest，全部通过。
+- 前端：test:store 的 404 同键重发与历史隐私竞态通过，npm run build 通过；浏览器验证预算纠正、刷新恢复及删除流程。
+- 规模与评测：benchmark_memory 与 eval_memory 均执行，完整参数和数值见 README。T8 的“先固化 40 个样本并记录基线”已完成，语义实现未启用。
+- 部分原设计验收描述是目标矩阵，并未逐条穷举所有排列；不把本次合成规模结果称为正式 SLA，不把模型 mock 称为真实模型验证。

@@ -17,6 +17,7 @@ def budget_candidate(text: str, day: date, source_id: str) -> MemoryCandidate | 
         return None
     value = round(float(duration[1]) * (60 if duration[2] == "小时" else 1))
     uncertain = re.search(r"不是|不想|不能|没有|朋友|他说|她说|比如|例如|假设|如果|可能|也许|建议|[？?‘’“”\"']|周[一二三四五六日天]", text)
+    uncertain = uncertain or len(re.findall(r"(\d+(?:\.\d+)?)\s*(分钟|小时)", text)) != 1 or re.search(r"但|不过|没空|不行|不学|通勤|做饭", text)
     scope = f"date:{day.isoformat()}" if "今天" in text else "weekend" if "周末" in text else "weekday" if "工作日" in text else "default"
     explicit = re.search(r"每天|每日|一天|今天|周末|工作日", text) and re.search(r"只有|有|能|可|时间|学习|学|投入", text)
     active = bool(explicit and not uncertain and 15 <= value <= 480)
@@ -75,13 +76,18 @@ def confirm_memory(db: sqlite3.Connection, memory_id: str, expected_revision: in
     if row["revision"] != expected_revision:
         raise ServiceError("REVISION_CONFLICT", "记忆已被更新")
     source = db.execute("SELECT * FROM memory_sources WHERE memory_id=? LIMIT 1", (memory_id,)).fetchone()
-    candidate = budget_candidate(content or row["content"], day or date.today(), uid("confirmation"))
+    original_day = date.fromisoformat(row["effective_to"]) if row["effective_to"] else (day or date.today())
+    origin = budget_candidate(source["excerpt"] or row["content"], original_day, uid("confirmation"))
+    candidate = budget_candidate(content, original_day, uid("confirmation")) if content else origin
+    explicit_scope = bool(content and re.search(r"每天|每日|一天|今天|周末|工作日", content))
+    if candidate and origin and not explicit_scope:
+        candidate.scope = origin.scope
     if row["constraint_id"] and value is None:
         constraint = db.execute("SELECT value,scope FROM constraints WHERE id=?", (row["constraint_id"],)).fetchone()
         value = candidate.value if content and content != row["content"] and candidate else constraint["value"]
-        scope = scope or constraint["scope"]
+        scope = scope or (candidate.scope if candidate and explicit_scope else constraint["scope"])
     if value is not None:
-        candidate = MemoryCandidate(f"可学习时间：{value} 分钟", "preference", "active", "fact", uid("confirmation"), content or row["content"], scope or "default", value)
+        candidate = MemoryCandidate(f"可学习时间：{value} 分钟", "preference", "active", "fact", uid("confirmation"), content or row["content"], scope or (candidate.scope if candidate else "default"), value)
     elif candidate:
         candidate.status = "active"
         candidate.scope = scope or candidate.scope
@@ -89,6 +95,9 @@ def confirm_memory(db: sqlite3.Connection, memory_id: str, expected_revision: in
         candidate = MemoryCandidate(content or row["content"], row["category"], "active", "experience", uid("confirmation"), content or row["content"])
     if source_id:
         candidate.source_id = source_id
+    if row["constraint_id"]:
+        db.execute("UPDATE constraints SET status='superseded',revision=revision+1 WHERE id=?", (row["constraint_id"],))
+        db.execute("UPDATE summaries SET valid=0 WHERE id IN (SELECT a.artifact_id FROM artifact_sources a JOIN memory_sources s ON s.source_id=a.source_id WHERE s.memory_id=?)", (memory_id,))
     # 确认是新的独立用户证据，保留原记录用于追溯。
     new_id = store_candidate(db, candidate)
     db.execute("UPDATE memories SET status='superseded',superseded_by=?,revision=revision+1 WHERE id=?", (new_id, memory_id))

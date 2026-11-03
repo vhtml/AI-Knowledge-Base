@@ -275,11 +275,12 @@ def next_undone(items: list[PlanItem], day: str | None = None) -> PlanItem | Non
 
 
 def replace_pending_plan(
-    items: list[PlanItem], goal_id: str, draft: list[PlanItem], daily_minutes: int | Callable[[date], int]
+    items: list[PlanItem], goal_id: str, draft: list[PlanItem], daily_minutes: int | Callable[[date], int],
+    start: date | None = None,
 ) -> list[PlanItem]:
     """重排未来未完成任务，同时把保留任务计入每日预算。"""
 
-    today = today_str()
+    today = (start or date.today()).isoformat()
     retained = [
         item for item in items
         if item.goal_id != goal_id or item.done or item.day < today

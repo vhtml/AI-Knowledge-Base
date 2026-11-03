@@ -78,7 +78,10 @@ class ContextBuilder:
             optional = []
             if summary:
                 optional.append((summary["id"], "会话摘要（资料）：" + summary["content"]))
-            optional.extend((r["id"], "相关记忆（资料）：" + r["content"]) for r in (recalled or []))
+            for hit in (recalled or []):
+                fresh = db.execute("SELECT id,content FROM memories WHERE id=? AND status='active' AND (effective_to IS NULL OR effective_to>=?)", (hit["id"], day)).fetchone()
+                if fresh:
+                    optional.append((fresh["id"], "相关记忆（资料）：" + fresh["content"]))
             for source_id, content in optional:
                 extra = {"role": "user", "content": content}
                 proposed = messages[:2] + [extra] + messages[2:]

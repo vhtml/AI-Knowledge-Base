@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import json
+import os
+from zoneinfo import ZoneInfo
 import sqlite3
 import uuid
 from datetime import datetime, timezone
@@ -25,10 +27,21 @@ def dumps(value: Any) -> str:
 
 
 class Repository:
-    def __init__(self, root: Path | str) -> None:
+    def __init__(self, root: Path | str, initialize: bool = True) -> None:
         self.root = Path(root).expanduser()
         self.path = self.root / "planner.db"
-        open_database(self.path).close()
+        if not initialize:
+            return
+        fresh = not self.path.exists()
+        timezone_name = os.getenv("STUDY_PLANNER_TIMEZONE", "Asia/Shanghai")
+        if fresh:
+            ZoneInfo(timezone_name)
+        db = open_database(self.path)
+        try:
+            if fresh:
+                db.execute("UPDATE profile SET timezone=?", (timezone_name,))
+        finally:
+            db.close()
 
     def profile(self, db: sqlite3.Connection) -> dict[str, Any]:
         return dict(db.execute("SELECT * FROM profile WHERE id=1").fetchone())
@@ -54,6 +67,9 @@ class Repository:
         for row in rows:
             item = dict(row)
             item.update(scope="long", superseded=item["status"] == "superseded")
+            if item["constraint_id"]:
+                constraint = db.execute("SELECT scope,value FROM constraints WHERE id=?", (item["constraint_id"],)).fetchone()
+                item.update(budget_scope=constraint["scope"], budget_value=constraint["value"])
             item["sources"] = [dict(s) for s in db.execute("SELECT source_id,excerpt FROM memory_sources WHERE memory_id=?", (item["id"],))]
             result.append(item)
         return result
@@ -64,8 +80,23 @@ class Repository:
             profile = self.profile(db)
             rows = db.execute("SELECT id,content,role,day FROM messages WHERE conversation_id=? AND deleted=0 ORDER BY seq DESC LIMIT 12", (conversation_id,)).fetchall()
             short = [{**dict(r), "scope": "short", "category": "note"} for r in reversed(rows)]
-            counts = {r[0]: r[1] for r in db.execute("SELECT status,count(*) FROM memories GROUP BY status")}
+            counts = {r[0]: r[1] for r in db.execute("SELECT status,count(*) FROM memories WHERE status!='deleted' GROUP BY status")}
             return {"goals": [g.to_dict() for g in goals], "items": [i.to_dict() for i in items], "reviews": [r.to_dict() for r in reviews],
-                    "state_revision": profile["state_revision"], "privacy_revision": profile["privacy_revision"], "budget_status": profile["budget_status"],
+                    "state_revision": profile["state_revision"], "privacy_revision": profile["privacy_revision"], "budget_status": profile["budget_status"], "timezone": profile["timezone"],
                     "memory": {"short": short, "long": self.memories(db), "has_more": sum(counts.values()) > 50,
                                "stats": {"short": len(short), "long": sum(counts.values()), "long_active": counts.get("active", 0), "pending": counts.get("pending", 0), "long_superseded": counts.get("superseded", 0)}}}
+
+    def export(self) -> dict[str, Any]:
+        with transaction(self.path, write=False) as db:
+            goals, items, reviews = self.load_domain(db)
+            memories = []
+            offset = 0
+            while True:
+                batch = self.memories(db, offset=offset, limit=100)
+                memories.extend(batch)
+                if len(batch) < 100:
+                    break
+                offset += 100
+            return {"format": "study-planner-export-v1", "exported_at": now_iso(), "profile": self.profile(db),
+                    "goals": [g.to_dict() for g in goals], "items": [i.to_dict() for i in items], "reviews": [r.to_dict() for r in reviews],
+                    "memories": memories, "messages": [dict(r) for r in db.execute("SELECT id,conversation_id,seq,role,content,created_at FROM messages WHERE deleted=0 ORDER BY conversation_id,seq")]}

@@ -44,6 +44,14 @@ class MemoryTests(unittest.TestCase):
         self.assertEqual(candidate.scope, 'date:2026-11-04')
         self.assertEqual(candidate.value, 15)
 
+    def test_model_preference_kept_pending(self) -> None:
+        from .selftest import ScriptedLLM
+        self.service.llm = ScriptedLLM(decisions=[{'action': 'answer', 'memory': [{'text': '我更喜欢图解学习', 'category': 'preference', 'promote': True}]}])
+        self.service.submit('default', 'preference', '我更喜欢图解学习')
+        memory = self.service.repo.snapshot()['memory']['long'][0]
+        self.assertEqual(memory['content'], '我更喜欢图解学习')
+        self.assertEqual(memory['status'], 'pending')
+
     def test_context_budget_and_pending_history(self) -> None:
         self.service.submit('default', 'done', '我想学 Python')
         self.service.accept('default', 'other', '不应进入其他轮次的待处理秘密')

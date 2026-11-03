@@ -2,12 +2,28 @@
 from __future__ import annotations
 
 import os
+import fcntl
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
 
 SCHEMA_VERSION = 1
+
+
+@contextmanager
+def runtime_lock(root: Path, exclusive: bool = False) -> Iterator[None]:
+    root.mkdir(mode=0o700, parents=True, exist_ok=True)
+    with (root / "runtime.lock").open("a") as handle:
+        os.chmod(root / "runtime.lock", 0o600)
+        try:
+            fcntl.flock(handle, (fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH) | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            raise ValueError("档案正在使用，请先停止 Web/CLI 再恢复") from exc
+        try:
+            yield
+        finally:
+            fcntl.flock(handle, fcntl.LOCK_UN)
 
 
 def open_database(path: Path) -> sqlite3.Connection:
@@ -18,6 +34,8 @@ def open_database(path: Path) -> sqlite3.Connection:
         db.execute("PRAGMA foreign_keys=ON")
         db.execute("PRAGMA synchronous=FULL")
         db.execute("PRAGMA busy_timeout=3000")
+        if db.execute("PRAGMA journal_mode").fetchone()[0].lower() == "wal" and sqlite3.sqlite_version_info < (3, 51, 3):
+            raise ValueError("当前 SQLite 运行库未达到 WAL 模式最低版本 3.51.3")
         version = db.execute("PRAGMA user_version").fetchone()[0]
         if version not in (0, SCHEMA_VERSION):
             raise ValueError(f"不支持的数据库版本：{version}")

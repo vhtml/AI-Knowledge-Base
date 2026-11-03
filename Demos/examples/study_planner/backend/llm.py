@@ -35,6 +35,42 @@ ACT_ALL = (
     ACT_ANSWER,
 )
 
+
+def validate_decision(raw: Any, user_text: str) -> dict[str, Any] | None:
+    """拒绝结构错误和无来源目标，避免模型输出直接进入业务状态。"""
+    if not isinstance(raw, dict) or raw.get("action") not in ACT_ALL:
+        return None
+    goal = raw.get("goal")
+    if goal is not None:
+        if not isinstance(goal, dict) or not isinstance(goal.get("title", ""), str) or len(goal.get("title", "")) > 120:
+            return None
+        tags = goal.get("tags", [])
+        if not isinstance(tags, list) or len(tags) > 10 or any(not isinstance(t, str) or len(t) > 30 for t in tags):
+            return None
+        if not isinstance(goal.get("deadline", ""), str):
+            return None
+    if raw["action"] == ACT_GOAL and (not goal or not goal.get("title") or goal["title"] not in user_text):
+        return None
+    entries = raw.get("memory", [])
+    if not isinstance(entries, list) or len(entries) > 20:
+        return None
+    for entry in entries:
+        if not isinstance(entry, dict) or not isinstance(entry.get("text"), str) or len(entry["text"]) > 1000:
+            return None
+        if entry.get("category", "note") not in ("preference", "note", "goal", "weakness", "strength", "review", "milestone", "summary", "plan"):
+            return None
+        if type(entry.get("promote", False)) is not bool or type(entry.get("importance", 3)) is not int or not 1 <= entry.get("importance", 3) <= 5:
+            return None
+    plan = raw.get("plan", [])
+    if not isinstance(plan, list) or len(plan) > 270:
+        return None
+    if any(not isinstance(p, dict) or not isinstance(p.get("title"), str) or len(p["title"]) > 200 for p in plan):
+        return None
+    for field in ("done", "review"):
+        if raw.get(field) is not None and not isinstance(raw[field], dict):
+            return None
+    return raw
+
 DECIDE_SYSTEM_PROMPT = """你是一个学习规划助手。你要读懂用户这一句话，
 决定这轮该执行什么动作，并把要落库的内容一并给出。
 
@@ -243,4 +279,5 @@ def build_client_from_env() -> LLMClient | None:
         model=config["model"],
         base_url=config["base_url"] or None,
         api_key=config["api_key"],
+        max_tokens=int(os.getenv("STUDY_PLANNER_OUTPUT_BUDGET", "1500")),
     )

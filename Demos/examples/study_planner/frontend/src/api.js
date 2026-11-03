@@ -53,7 +53,9 @@ async function request(url, options) {
     } catch {
       /* 响应体不是 JSON，忽略 */
     }
-    throw new Error(detail ? `请求失败（${res.status}）：${detail}` : `请求失败（${res.status}）`)
+    const error = new Error(detail ? `请求失败（${res.status}）：${detail}` : `请求失败（${res.status}）`)
+    error.status = res.status
+    throw error
   }
 
   return res
@@ -192,7 +194,9 @@ export async function streamChat(message, onFrame, signal, metadata = {}) {
     } catch {
       /* 响应体不是 JSON，忽略 */
     }
-    throw new Error(detail ? `请求失败（${res.status}）：${detail}` : `请求失败（${res.status}）`)
+    const error = new Error(detail ? `请求失败（${res.status}）：${detail}` : `请求失败（${res.status}）`)
+    error.status = res.status
+    throw error
   }
 
   if (!res.body) throw new Error('响应缺少可读流')

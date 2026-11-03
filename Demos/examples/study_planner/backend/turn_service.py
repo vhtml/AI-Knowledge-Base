@@ -14,8 +14,8 @@ from .maintenance import Maintenance
 from .deletion import DeletionService
 from .retrieval import Retrieval
 from .agent import StepRecord, StudyPlanner, Turn, detect_intent
-from .db import transaction
-from .llm import ACT_ALL, DECIDE_SYSTEM_PROMPT, REPLY_SYSTEM_PROMPT
+from .db import transaction, runtime_lock
+from .llm import ACT_ALL, validate_decision
 from .memory import MemoryManager
 from .memory_types import OperationResult, ServiceError
 from .models import MemoryItem
@@ -41,6 +41,8 @@ class RecordingMemory(MemoryManager):
 
 class TurnService:
     def __init__(self, root: Path | str, llm: Any = None, clock: Clock | None = None) -> None:
+        self._runtime_guard = runtime_lock(Path(root).expanduser())
+        self._runtime_guard.__enter__()
         self.repo = Repository(root)
         self.llm = llm
         self.clock = clock or Clock()
@@ -56,12 +58,27 @@ class TurnService:
         self.retrieval = Retrieval(self.repo, self.clock)
         self.recover()
 
+    def close(self) -> None:
+        guard = getattr(self, "_runtime_guard", None)
+        if guard is not None:
+            self._runtime_guard = None
+            guard.__exit__(None, None, None)
+
     def recover(self) -> None:
         with transaction(self.repo.path) as db:
-            db.execute("UPDATE turns SET status='completed',reply=facts,degraded=1 WHERE status='committed' AND lease_until<?", (time.time(),))
+            interrupted = db.execute("SELECT * FROM turns WHERE status='committed' AND lease_until<? LIMIT 100", (time.time(),)).fetchall()
+            for turn in interrupted:
+                db.execute("UPDATE turns SET status='completed',reply=facts,degraded=1,lease_until=0 WHERE id=?", (turn["id"],))
+                if turn["facts"] and not db.execute("SELECT 1 FROM messages WHERE turn_id=? AND role='assistant'", (turn["id"],)).fetchone():
+                    seq = db.execute("SELECT coalesce(max(seq),0)+1 FROM messages WHERE conversation_id=?", (turn["conversation_id"],)).fetchone()[0]
+                    mid = uid("msg")
+                    day = self.clock.day(self.repo.profile(db)["timezone"]).isoformat()
+                    db.execute("INSERT INTO messages VALUES (?,?,?,?,?,?,?,?,0)", (mid, turn["conversation_id"], seq, turn["id"], "assistant", turn["facts"], now_iso(), day))
+                    db.execute("INSERT INTO artifact_sources VALUES ('message',?,?)", (mid, turn["id"]))
             db.execute("UPDATE turns SET status='failed',error_code='INTERRUPTED' WHERE status IN ('accepted','analyzing') AND lease_until<?", (time.time(),))
 
     def get(self, turn_id: str) -> OperationResult:
+        self.recover()
         with transaction(self.repo.path, write=False) as db:
             row = db.execute("SELECT * FROM turns WHERE id=?", (turn_id,)).fetchone()
             if row is None:
@@ -98,10 +115,15 @@ class TurnService:
         if on_event:
             on_event("operation", {"turn_id": turn_id, "request_id": request_id})
         if fresh and command in ("reset", "memory_delete"):
-            if command == "reset":
-                self.deletion.reset(turn_id)
-            else:
-                self.deletion.delete(payload["id"], payload["expected_revision"], turn_id)
+            try:
+                if command == "reset":
+                    self.deletion.reset(turn_id)
+                else:
+                    self.deletion.delete(payload["id"], payload["expected_revision"], turn_id)
+            except Exception as exc:
+                with transaction(self.repo.path) as db:
+                    db.execute("UPDATE turns SET status='failed',error_code=? WHERE id=?", (getattr(exc, "code", "DELETE_PENDING_RECOVERY"), turn_id))
+                raise
             return self.get(turn_id)
         return self.run(turn_id, text, command, payload, on_event) if fresh else self.get(turn_id)
 
@@ -125,6 +147,8 @@ class TurnService:
                 business_day = self.clock.day(profile["timezone"])
                 def budget(day: date) -> int:
                     candidate = budget_candidate(text, business_day, source) if command == "chat" else None
+                    if command == "goal" and (payload or {}).get("daily_minutes") is not None:
+                        candidate = MemoryCandidate("", status="active", kind="fact", value=payload["daily_minutes"])
                     with transaction(self.repo.path, write=False) as db:
                         if self.repo.profile(db)["budget_status"] == "needs_confirmation" and not (candidate and candidate.status == "active" and candidate.scope == "default"):
                             return resolve_daily_minutes(db, day)
@@ -143,7 +167,7 @@ class TurnService:
                 with transaction(self.repo.path) as db:
                     current = self.repo.profile(db)
                     status = db.execute("SELECT status FROM turns WHERE id=?", (turn_id,)).fetchone()[0]
-                    if status == "cancelled":
+                    if status != "analyzing":
                         break
                     if current["state_revision"] != revision:
                         if attempt == 0:
@@ -192,9 +216,11 @@ class TurnService:
                 try:
                     self.maintenance.schedule(row["conversation_id"])
                     self.maintenance.run_once()
-                except Exception:
-                    # 派生内容失败不影响已提交业务；作业有持久状态可重试。
-                    pass
+                    from .backup import daily_backup
+                    daily_backup(self.repo, business_day.isoformat())
+                except Exception as exc:
+                    import logging
+                    logging.getLogger(__name__).warning("maintenance_failed type=%s", type(exc).__name__)
                 break
         except ServiceError as exc:
             with transaction(self.repo.path) as db:
@@ -213,8 +239,9 @@ class TurnService:
             return "记忆已确认或纠正。"
         if command == "goal":
             goal = planner._record_goal(payload["title"], payload.get("deadline", ""), [], steps)
-            draft = generate_plan(goal, start=planner.business_day, daily_minutes=payload.get("daily_minutes", 60))
-            replace_pending_plan(planner.items, goal.id, draft.items, payload.get("daily_minutes", 60))
+            minutes = planner.budget_for_day(planner.business_day)
+            draft = generate_plan(goal, start=planner.business_day, daily_minutes=minutes, budget_for_day=planner.budget_for_day)
+            replace_pending_plan(planner.items, goal.id, draft.items, planner.budget_for_day, start=planner.business_day)
             return f"已创建目标「{goal.title}」并排期。"
         if command == "toggle":
             target = next((i for i in planner.items if i.id == payload["id"]), None)
@@ -236,12 +263,16 @@ class TurnService:
             context = self.context.build(turn_id, "decision", recalled=self.retrieval.search(text))
             planner.context_source_ids = context.source_ids
             try:
-                decision = self.llm.complete_json(context.messages)
+                decision = validate_decision(self.llm.complete_json(context.messages), text)
             except Exception:
                 pass
         if isinstance(decision, dict) and decision.get("action") in ACT_ALL:
             planner._record(steps, StepRecord("决策", "模型决策", True, decision["action"]))
-            facts = planner._apply_model_decision(decision, text, bundle, steps, Turn("", ""))
+            entries = decision.get("memory", [])
+            facts = planner._apply_model_decision({**decision, "memory": []}, text, bundle, steps, Turn("", ""))
+            planner._apply_model_memory(entries, steps)
+            if any(entry.get("promote") for entry in entries):
+                facts += "\n已保存长期记忆候选，需在记忆面板确认后生效。"
         else:
             facts = planner._run_intent(detect_intent(text), text, bundle, steps, Turn("", ""))
         candidate = budget_candidate(text, planner.business_day, "analysis")
@@ -252,12 +283,12 @@ class TurnService:
     def save_memory(self, db: Any, memory: RecordingMemory, source: str, text: str, command: str,
                     payload: dict[str, Any], day: date) -> None:
         candidate = budget_candidate(text, day, source) if command == "chat" else None
-        if command == "goal":
+        if command == "goal" and payload.get("daily_minutes") is not None:
             candidate = MemoryCandidate(f"可学习时间：{payload.get('daily_minutes', 60)} 分钟", "preference", "active", "fact", source, text, "default", payload.get("daily_minutes", 60))
         if candidate:
             store_candidate(db, candidate)
         for item in memory.writes:
-            if not item["long"] or item["category"] == "preference":
+            if not item["long"] or (item["category"] == "preference" and candidate is not None):
                 continue
             active = item["category"] == "goal" and item["content"].removeprefix("学习目标：") in text
             store_candidate(db, MemoryCandidate(item["content"], item["category"], "active" if active else "pending", "experience", source, text))

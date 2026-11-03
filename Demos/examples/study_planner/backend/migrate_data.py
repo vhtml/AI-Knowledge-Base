@@ -29,6 +29,8 @@ def inspect_source(source: Path) -> tuple[dict[str, Any], str, dict[str, Any]]:
         if not isinstance(value, expected):
             raise ValueError(f"{name}.json 格式不正确")
         data[name] = value
+    raw_counts = {name: len(data[name]) for name in ("goals", "plans", "reviews")}
+    data["review_history"] = list(data["reviews"])
     for name in ("goals", "plans"):
         unique: dict[str, Any] = {}
         for item in data[name]:
@@ -61,7 +63,7 @@ def inspect_source(source: Path) -> tuple[dict[str, Any], str, dict[str, Any]]:
                 raise ValueError("记忆存在同 ID 不同内容")
             memories[item["id"]] = item
     data["memories"] = list(memories.values())
-    report = {"goals": len(data["goals"]), "items": len(data["plans"]), "reviews": len(reviews),
+    report = {"source_counts": raw_counts, "goals": len(data["goals"]), "items": len(data["plans"]), "reviews": len(reviews),
               "duplicate_reviews": review_count - len(reviews), "memories": len(memories), "raw_reviews": review_count}
     return data, digest.hexdigest(), report
 
@@ -83,6 +85,8 @@ def migrate(source: Path, target: Path, dry_run: bool = True) -> dict[str, Any]:
         if not copy.exists():
             shutil.copyfile(path, copy)
             os.chmod(copy, 0o600)
+    if inspect_source(backup)[1] != batch:
+        raise ValueError("源数据在检查期间发生变化，请停止旧版写入后重试")
     with transaction(repo.path) as db:
         if db.execute("SELECT 1 FROM imports WHERE id=?", (batch,)).fetchone():
             return {**report, "batch": batch, "already_imported": True}
@@ -102,7 +106,7 @@ def migrate(source: Path, target: Path, dry_run: bool = True) -> dict[str, Any]:
                 budget_pending = True
         db.execute("UPDATE profile SET budget_status=?,state_revision=state_revision+1", ("needs_confirmation" if budget_pending else "unset",))
         report["pending_budget"] = budget_pending
-        db.execute("INSERT INTO imports VALUES (?,?)", (batch, dumps({**report, "original_reviews": data["reviews"]})))
+        db.execute("INSERT INTO imports VALUES (?,?)", (batch, dumps({**report, "original_reviews": data["review_history"]})))
         if db.execute("PRAGMA foreign_key_check").fetchone():
             raise ValueError("外键检查失败")
     return {**report, "batch": batch, "dry_run": False}

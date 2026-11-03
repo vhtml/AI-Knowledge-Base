@@ -325,7 +325,7 @@ class StudyPlanner:
         否则列表里会出现两条一模一样的目标。
         """
 
-        goal_id = stable_id("g", title, today_str())
+        goal_id = stable_id("g", title, self.business_day.isoformat())
 
         existing = next((item for item in self.goals if item.id == goal_id), None)
 
@@ -376,7 +376,7 @@ class StudyPlanner:
         minutes, source = self._pick_daily_minutes(bundle)
         draft = generate_plan(goal, start=self.business_day, daily_minutes=minutes, budget_for_day=self.budget_for_day)
 
-        fresh = replace_pending_plan(self.items, goal.id, draft.items, self.budget_for_day or minutes)
+        fresh = replace_pending_plan(self.items, goal.id, draft.items, self.budget_for_day or minutes, start=self.business_day)
         draft.items = fresh
 
         # 计划本身进短期记忆：它是"今天要做什么"的依据
@@ -450,7 +450,7 @@ class StudyPlanner:
     def _mark_next_done(self, steps: list[StepRecord]) -> PlanItem | None:
         """把今天的下一件事标记完成，返回被标记的那条。"""
 
-        target = next_undone(self.items)
+        target = next_undone(self.items, self.business_day.isoformat())
 
         if target is None:
             self._record(steps, StepRecord("标记完成", "没有待办", ok=False, detail="所有任务都已完成"))
@@ -685,7 +685,7 @@ class StudyPlanner:
             fallback = generate_plan(goal, start=self.business_day, daily_minutes=minutes, budget_for_day=self.budget_for_day)
             draft = fallback.items
 
-        fresh = replace_pending_plan(self.items, goal.id, draft, self.budget_for_day or minutes)
+        fresh = replace_pending_plan(self.items, goal.id, draft, self.budget_for_day or minutes, start=self.business_day)
 
         # 计划本身进短期记忆：它是"今天要做什么"的依据
         self.memory.remember(
@@ -777,8 +777,7 @@ class StudyPlanner:
 
         return items, dropped
 
-    @staticmethod
-    def _parse_plan_day(raw: Any) -> date:
+    def _parse_plan_day(self, raw: Any) -> date:
         """解析模型给的日期。
 
         模型大概率会照着 YYYY-MM-DD 写，但偶尔会写成 "2026/11/05"
@@ -800,7 +799,7 @@ class StudyPlanner:
         parts = text.split("-")
 
         if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
-            today = date.today()
+            today = self.business_day
             candidate = date(today.year, int(parts[0]), int(parts[1]))
 
             if candidate < today:
@@ -1153,8 +1152,7 @@ class StudyPlanner:
 
         return cleaned[:60] or text.strip()[:60]
 
-    @staticmethod
-    def _guess_deadline(text: str) -> str:
+    def _guess_deadline(self, text: str) -> str:
         """猜截止日期：识别"X天后""X月X日"这类说法。"""
 
         import re
@@ -1164,19 +1162,19 @@ class StudyPlanner:
         if match:
             from datetime import timedelta
 
-            return (date.today() + timedelta(days=int(match.group(1)))).isoformat()
+            return (self.business_day + timedelta(days=int(match.group(1)))).isoformat()
 
         match = re.search(r"(\d{1,2})月(\d{1,2})[日号]", text)
 
         if match:
-            year = date.today().year
+            year = self.business_day.year
 
             try:
                 candidate = date(year, int(match.group(1)), int(match.group(2)))
             except ValueError:
                 return ""
 
-            if candidate < date.today():
+            if candidate < self.business_day:
                 candidate = date(year + 1, int(match.group(1)), int(match.group(2)))
 
             return candidate.isoformat()
@@ -1234,7 +1232,7 @@ class StudyPlanner:
     def today_items(self) -> list[PlanItem]:
         """今天的待办。"""
 
-        return items_for_day(self.items, today_str())
+        return items_for_day(self.items, self.business_day.isoformat())
 
     def rollover(self, day: str | None = None) -> list[str]:
         """跨天：短期工作区清空，值得沉淀的进长期档案。"""

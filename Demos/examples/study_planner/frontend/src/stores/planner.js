@@ -1,6 +1,6 @@
 /** 服务端为唯一真相；用持久请求标识恢复断线操作。 */
 import { defineStore } from 'pinia'
-import { computed, ref } from 'vue'
+import { computed, ref, onScopeDispose } from 'vue'
 import { apiJSON, createGoal as apiCreateGoal, fetchState, rollover as apiRollover, resetAll as apiResetAll, streamChat, toggleTask as apiToggleTask } from '../api'
 
 const pendingKey = 'study-planner-pending'
@@ -13,12 +13,16 @@ export const usePlannerStore = defineStore('planner', () => {
   const messages = ref([]), streaming = ref(false), liveSteps = ref([]), liveStatus = ref(''), liveText = ref('')
   const error = ref(''), failedMessage = ref(''), ready = ref(false)
   const conversationId = ref(localStorage.getItem(conversationKey) || 'default')
+  const privacyRevision = ref(-1), timezone = ref('Asia/Shanghai'), now = ref(Date.now())
+  const timer = setInterval(() => { now.value = Date.now() }, 60000)
+  onScopeDispose(() => clearInterval(timer))
+  let historyGeneration = 0
   const revision = ref(-1), memoryHasMore = ref(false), historyHasMore = ref(false)
   let controller = null, activeTurn = '', generation = 0
   let pending = null
   try { pending = JSON.parse(localStorage.getItem(pendingKey)) } catch { localStorage.removeItem(pendingKey) }
 
-  const today = computed(() => items.value.filter((i) => i.day === new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' })))
+  const today = computed(() => items.value.filter((i) => i.day === new Date(now.value).toLocaleDateString('sv-SE', { timeZone: timezone.value })))
   const todayPending = computed(() => today.value.filter((i) => !i.done))
   const activeGoals = computed(() => goals.value.filter((i) => i.status === 'active'))
   const progress = computed(() => ({ done: items.value.filter((i) => i.done).length, total: items.value.length }))
@@ -29,7 +33,9 @@ export const usePlannerStore = defineStore('planner', () => {
   const hasPlan = computed(() => items.value.length > 0)
 
   function applySnapshot(snapshot) {
-    if (!snapshot || (snapshot.state_revision ?? 0) < revision.value) return
+    if (!snapshot || (snapshot.state_revision ?? 0) < revision.value || (snapshot.privacy_revision ?? 0) < privacyRevision.value) return
+    privacyRevision.value = snapshot.privacy_revision ?? 0
+    timezone.value = snapshot.timezone ?? timezone.value
     revision.value = snapshot.state_revision ?? 0
     goals.value = snapshot.goals ?? []; items.value = snapshot.items ?? []; reviews.value = snapshot.reviews ?? []
     memory.value = snapshot.memory ?? { stats: {}, short: [], long: [] }
@@ -44,8 +50,11 @@ export const usePlannerStore = defineStore('planner', () => {
   }
 
   async function loadHistory(older = false) {
+    const ticket = ++historyGeneration, conversation = conversationId.value
     const before = older && messages.value.length ? `&before_seq=${messages.value[0].seq}` : ''
     const data = await apiJSON(`/api/conversations/${encodeURIComponent(conversationId.value)}/messages?limit=50${before}`)
+    if (ticket !== historyGeneration || conversation !== conversationId.value || data.privacy_revision < privacyRevision.value) return
+    privacyRevision.value = data.privacy_revision
     const rows = data.messages.map((m) => ({ ...m, time: clock(m.created_at) }))
     messages.value = older ? [...rows, ...messages.value] : rows
     historyHasMore.value = data.has_more
@@ -62,9 +71,19 @@ export const usePlannerStore = defineStore('planner', () => {
 
   async function recoverPending() {
     if (!pending) return
-    const result = activeTurn
+    let result
+    try {
+      result = activeTurn
       ? await apiJSON(`/api/turns/${encodeURIComponent(activeTurn)}`)
       : await apiJSON(`/api/requests/${encodeURIComponent(pending.request_id)}`)
+    } catch (err) {
+      if (err.status === 404) {
+        failedMessage.value = pending.message
+        error.value = '请求尚未被接收，点击重试将复用原请求标识'
+        return
+      }
+      throw err
+    }
     if (['completed', 'cancelled', 'failed'].includes(result.status)) {
       if (result.status === 'failed') { failedMessage.value = pending.message; error.value = result.error_code || '处理失败' }
       savePending(null)
@@ -72,7 +91,8 @@ export const usePlannerStore = defineStore('planner', () => {
       await loadHistory()
     } else {
       activeTurn = result.turn_id
-      error.value = '操作仍在处理中，可稍后查询结果；重复发送同一条会继续查询。'
+      error.value = '操作仍在处理中，正在查询结果'
+      setTimeout(() => { if (pending && !streaming.value) recoverPending().catch((err) => { error.value = err.message }) }, 1000)
     }
   }
 
@@ -80,7 +100,7 @@ export const usePlannerStore = defineStore('planner', () => {
     const content = text.trim()
     if (!content || streaming.value) return
     if (pending && pending.message !== content) {
-      await recoverPending()
+      try { await recoverPending() } catch (err) { error.value = err.message; return }
       if (pending) return
     }
     error.value = ''; failedMessage.value = ''
@@ -160,8 +180,17 @@ export const usePlannerStore = defineStore('planner', () => {
     if (ok) await loadHistory()
     return ok
   }
+  async function exportArchive() {
+    try {
+      const data = await apiJSON('/api/export')
+      const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }))
+      const link = document.createElement('a')
+      link.href = url; link.download = 'study-planner-export.json'; link.click()
+      URL.revokeObjectURL(url)
+    } catch (err) { error.value = err.message }
+  }
   return { goals, items, reviews, memory, messages, streaming, liveSteps, liveStatus, liveText, error, failedMessage, ready,
     today, todayPending, activeGoals, progress, longTermActive, longTermSuperseded, shortTermSummary, memoryStats, hasPlan,
     memoryHasMore, historyHasMore, loadState, send, stop, toggleTask, createGoal, rollover, resetAll, retry, clearChat,
-    loadMoreMemories, loadHistory, updateMemory, previewDeletion, deleteMemory, recoverPending }
+    exportArchive, loadMoreMemories, loadHistory, updateMemory, previewDeletion, deleteMemory, recoverPending }
 })

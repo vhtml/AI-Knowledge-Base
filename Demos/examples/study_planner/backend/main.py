@@ -7,6 +7,8 @@ import os
 import queue
 import sqlite3
 import threading
+import logging
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
@@ -38,17 +40,52 @@ class SessionStore:
             if self._service is None:
                 from dotenv import load_dotenv
                 load_dotenv(Path(__file__).resolve().parents[3] / '.env')
+                self.root = Path(os.getenv(DATA_DIR_ENV) or self.root)
                 self._service = TurnService(self.root, build_client_from_env())
             return self._service
 
     def rebind(self, root: Path | str) -> None:
         with self.lock:
+            if self._service is not None:
+                self._service.close()
             self.root = Path(root)
             self._service = TurnService(self.root)
 
 
 session = SessionStore()
-app = FastAPI(title='学习规划师 API')
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    stopped = threading.Event()
+
+    def maintain() -> None:
+        while not stopped.wait(5):
+            service = session._service
+            if service is None:
+                continue
+            try:
+                from .backup import daily_backup
+                service.deletion.replay()
+                service.recover()
+                service.maintenance.run_once()
+                with transaction(service.repo.path, write=False) as db:
+                    day = service.clock.day(service.repo.profile(db)['timezone']).isoformat()
+                daily_backup(service.repo, day)
+            except Exception as exc:
+                logging.getLogger(__name__).warning('maintenance_failed type=%s', type(exc).__name__)
+    worker = threading.Thread(target=maintain, daemon=True)
+    worker.start()
+    try:
+        yield
+    finally:
+        stopped.set()
+        worker.join(timeout=10)
+        if session._service is not None and not worker.is_alive():
+            session._service.close()
+
+
+app = FastAPI(title='学习规划师 API', lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=['http://localhost:5173', 'http://127.0.0.1:5173'], allow_methods=['*'], allow_headers=['*'])
 
 
@@ -64,6 +101,7 @@ async def database_error(request: Request, exc: sqlite3.Error) -> JSONResponse:
 
 
 class WriteRequest(BaseModel):
+    model_config = {"str_strip_whitespace": True}
     request_id: str | None = Field(default=None, min_length=1, max_length=120)
 
 
@@ -79,13 +117,13 @@ class ToggleRequest(WriteRequest):
 class GoalRequest(WriteRequest):
     title: str = Field(min_length=1, max_length=120)
     deadline: str = ''
-    daily_minutes: int = Field(default=60, ge=15, le=480)
+    daily_minutes: int | None = Field(default=None, ge=15, le=480)
 
 
 class MemoryRequest(WriteRequest):
     expected_revision: int = Field(ge=1)
     content: str | None = Field(default=None, min_length=1, max_length=1000)
-    scope: str | None = Field(default=None, max_length=30)
+    scope: str | None = Field(default=None, max_length=30, pattern=r"^(default|weekday|weekend|date:\d{4}-\d{2}-\d{2})$")
     value: int | None = Field(default=None, ge=15, le=480)
 
 
@@ -94,8 +132,14 @@ def sse(event: str, data: dict[str, Any]) -> str:
 
 
 @app.get('/health')
-def health() -> dict[str, str]:
-    return {'status': 'ok', 'mode': 'model' if session.service.llm is not None else 'rule', 'storage': 'sqlite'}
+def health() -> dict[str, Any]:
+    service = session.service
+    with transaction(service.repo.path, write=False) as db:
+        failed = db.execute("SELECT count(*) FROM jobs WHERE status='failed'").fetchone()[0]
+    backups = sorted((service.repo.root / 'backups').glob('*.db.json'))
+    return {'status': 'ok', 'mode': 'model' if service.llm is not None else 'rule', 'storage': 'sqlite',
+            'sqlite_version': sqlite3.sqlite_version, 'failed_jobs': failed,
+            'last_backup_at': json.loads(backups[-1].read_text())['created_at'] if backups else None}
 
 
 @app.get('/api/state')
@@ -201,6 +245,11 @@ def reset(body: WriteRequest | None = None) -> dict[str, Any]:
 def conversations() -> list[dict[str, Any]]:
     with transaction(session.service.repo.path, write=False) as db:
         return [dict(row) for row in db.execute('SELECT * FROM conversations ORDER BY created_at DESC LIMIT 100')]
+
+
+@app.get('/api/export')
+def export_archive() -> JSONResponse:
+    return JSONResponse(content=session.service.repo.export(), headers={'Content-Disposition': 'attachment; filename="study-planner-export.json"'})
 
 
 @app.get('/api/conversations/{conversation_id}/messages')

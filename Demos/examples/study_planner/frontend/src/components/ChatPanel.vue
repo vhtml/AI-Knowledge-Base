@@ -18,6 +18,14 @@ const composerRef = ref(null)
 
 const canSend = computed(() => input.value.trim().length > 0 && !store.streaming)
 
+async function copyMessage(content) {
+  try {
+    await navigator.clipboard.writeText(content)
+  } catch {
+    store.error = '复制失败，请选择文本手动复制'
+  }
+}
+
 /* ---------- 滚动 ---------- */
 
 function scrollToBottom(smooth = true) {
@@ -109,7 +117,7 @@ watch(
               <button
                 type="button"
                 class="link-btn"
-                @click="navigator.clipboard.writeText(msg.content)"
+                @click="copyMessage(msg.content)"
               >
                 复制
               </button>

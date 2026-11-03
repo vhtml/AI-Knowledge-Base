@@ -3,6 +3,7 @@
 # python
 .env
 .env.*
+!Demos/.env.example
 __pycache__/
 .venv/
 
