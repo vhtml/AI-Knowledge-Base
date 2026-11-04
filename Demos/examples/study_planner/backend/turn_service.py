@@ -202,7 +202,7 @@ class TurnService:
                     db.execute("UPDATE turns SET status='committed',facts=?,state_revision=? WHERE id=?", (facts, revision + 1, turn_id))
                 emit("step", {"phase": "提交", "title": "变更已保存", "ok": True, "detail": f"版本 {revision+1}"})
                 reply, degraded = facts, False
-                if self.llm is not None and command == "chat":
+                if self.llm is not None and command == "chat" and not getattr(planner, "direct_reply", False):
                     try:
                         chunks = []
                         reply_context = self.context.build(turn_id, "reply", facts, self.retrieval.search(text))
@@ -273,6 +273,25 @@ class TurnService:
             return "学习档案已清空。"
         if command != "chat":
             raise ServiceError("INVALID_COMMAND", "未知操作", 422)
+        if (any(word in text for word in ("今天", "今日"))
+                and any(word in text for word in ("任务", "待办", "计划", "做", "安排"))
+                and (any(word in text for word in ("什么", "哪些", "几", "有没有", "有没", "查询", "查看", "列出", "需要做", "要做", "有啥", "多少", "吗"))
+                     or text.strip() in ("今日任务", "今日待办", "今天的任务", "今天的待办"))):
+            # 日期查询必须由事实回答，避免模型把总进度误当成今日任务。
+            planner.direct_reply = True
+            day = planner.business_day.isoformat()
+            today_items = [item for item in planner.items if item.day == day]
+            lines = [f"今天（{day}）有 {len(today_items)} 条任务。"]
+            for item in today_items:
+                lines.append(f"- {'已完成' if item.done else '待完成'}：{item.title}（{item.minutes} 分钟）")
+            if not today_items:
+                upcoming = sorted((item for item in planner.items if item.day > day and not item.done), key=lambda item: item.day)
+                if upcoming:
+                    first = upcoming[0]
+                    lines.append(f"下一条未完成任务在 {first.day}：{first.title}（{first.minutes} 分钟）。")
+            done = sum(item.done for item in planner.items)
+            lines.append(f"全部计划共 {len(planner.items)} 条，已完成 {done} 条。")
+            return "\n".join(lines)
         decision = None
         if self.llm:
             context = self.context.build(turn_id, "decision", recalled=self.retrieval.search(text))

@@ -79,14 +79,15 @@ function goalTitle(goalId) {
       <div class="panel-head">
         <h2>今日待办</h2>
         <span v-if="store.hasPlan" class="panel-sub">
-          {{ store.progress.done }}/{{ store.progress.total }} 已完成
+          全部计划 {{ store.progress.done }}/{{ store.progress.total }} 已完成
         </span>
       </div>
 
       <div v-if="!store.today.length" class="panel-empty">
         <p v-if="!store.hasPlan">还没有计划。</p>
         <p v-else>今天没有排任务。</p>
-        <span class="panel-hint">在左侧说「生成计划」试试</span>
+        <span v-if="!store.hasPlan" class="panel-hint">在左侧说「生成计划」试试</span>
+        <span v-else class="panel-hint">其他日期的任务计入全部计划进度</span>
       </div>
 
       <ul v-else class="task-list">

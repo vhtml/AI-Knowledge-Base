@@ -63,6 +63,27 @@ class TurnTests(unittest.TestCase):
         self.assertEqual(result.reply, '已保存')
         self.assertTrue(result.degraded)
 
+    def test_today_query_distinguishes_future_tasks(self) -> None:
+        from datetime import datetime, timedelta, timezone
+        from .context import Clock
+        from .models import Goal, PlanItem
+
+        today = datetime(2026, 11, 4, 4, tzinfo=timezone.utc)
+        service = TurnService(self.temp.name, clock=Clock(lambda: today))
+        with transaction(service.repo.path) as db:
+            goal = Goal(id='g', title='Python')
+            future = [(today.date() + timedelta(days=i)).isoformat() for i in range(1, 6)]
+            items = [PlanItem(id=f'p{i}', goal_id='g', title=f'任务{i}', day=day, minutes=60) for i, day in enumerate(future)]
+            service.repo.save_domain(db, [goal], items, [])
+        result = service.submit('default', 'today-query', '我今天有什么需要做的')
+        self.assertIn('今天（2026-11-04）有 0 条任务', result.reply)
+        self.assertIn('2026-11-05', result.reply)
+        self.assertIn('全部计划共 5 条', result.reply)
+        self.assertIn('今天（2026-11-04）有 0 条任务', service.submit('default', 'today-query-2', '查询今日任务').reply)
+        result = service.submit('default', 'generate-today', '今天生成计划')
+        self.assertTrue(any(item['day'] == '2026-11-04' for item in service.repo.snapshot()['items']))
+        service.close()
+
     def test_empty_legacy_files_do_not_block_startup(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
