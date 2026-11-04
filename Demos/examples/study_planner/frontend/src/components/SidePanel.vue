@@ -149,12 +149,15 @@ function goalTitle(goalId) {
 
     <!-- 记忆 -->
     <div v-else class="panel">
-      <div class="panel-head">
-        <h2>记忆</h2>
-        <button type="button" @click="store.exportArchive()">导出档案</button>
-        <span class="panel-sub">
-          短期 {{ store.memoryStats.short ?? 0 }} · 长期 {{ store.memoryStats.long ?? 0 }}
-        </span>
+      <div class="panel-head memory-heading">
+        <div>
+          <h2>记忆</h2>
+          <span class="panel-sub">短期 {{ store.memoryStats.short ?? 0 }} · 长期 {{ store.memoryStats.long ?? 0 }}</span>
+        </div>
+        <button type="button" class="mem-btn" @click="store.exportArchive()">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3v12m-5-5 5 5 5-5M4 16v4h16v-4" /></svg>
+          导出档案
+        </button>
       </div>
 
       <form v-if="editing" class="memory-editor" @submit.prevent="saveMemory">
@@ -162,13 +165,19 @@ function goalTitle(goalId) {
         <label>内容<textarea v-model="editing.content" required maxlength="1000"></textarea></label>
         <label>每日预算（仅修改时间时填写，分钟）<input v-model="editing.value" type="number" min="15" max="480" /></label>
         <label>适用范围<select v-model="editing.scope"><option v-if="editing.scope.startsWith('date:')" :value="editing.scope">{{ editing.scope.slice(5) }} 当天</option><option value="default">每天默认</option><option value="weekday">工作日</option><option value="weekend">周末</option></select></label>
-        <button type="submit">保存纠正</button><button type="button" @click="editing = null">取消</button>
+        <div class="memory-actions">
+          <button class="mem-btn" type="button" @click="editing = null">取消</button>
+          <button class="mem-btn mem-btn-primary" type="submit">保存纠正</button>
+        </div>
       </form>
       <div v-if="deleting" class="memory-editor" role="alert">
         <h3>确认清除影响</h3>
         <p>{{ deleting.preview.effect }}</p>
         <p>关联来源：{{ deleting.preview.source_ids.length }} 条</p>
-        <button type="button" @click="confirmDeletion">确认删除</button><button type="button" @click="deleting = null">取消</button>
+        <div class="memory-actions">
+          <button class="mem-btn" type="button" @click="deleting = null">取消</button>
+          <button class="mem-btn mem-btn-danger" type="button" @click="confirmDeletion">确认删除</button>
+        </div>
       </div>
       <!-- 长期档案 -->
       <section class="mem-section">
@@ -194,19 +203,25 @@ function goalTitle(goalId) {
               <span class="mem-mentions">{{ { active: '已生效', pending: '待确认', superseded: '已取代', expired: '已过期' }[item.status] || item.status }}</span>
             </div>
             <p class="mem-content">{{ item.content }}</p>
-            <details v-if="item.sources?.length">
+            <details v-if="item.sources?.length" class="memory-source">
               <summary>查看来源</summary>
               <p v-for="source in item.sources" :key="source.source_id" class="mem-note">{{ source.excerpt }}</p>
             </details>
             <div class="memory-actions">
-              <button v-if="item.status === 'pending'" type="button" @click="store.updateMemory(item)">确认</button>
-              <button v-if="['active','pending'].includes(item.status)" type="button" @click="editMemory(item)">纠正</button>
-              <button type="button" @click="previewDeletion(item)">删除</button>
+              <button v-if="item.status === 'pending'" class="mem-btn mem-btn-primary" type="button" @click="store.updateMemory(item)">确认</button>
+              <button v-if="['active','pending'].includes(item.status)" class="mem-btn mem-btn-edit" type="button" @click="editMemory(item)">
+                <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m15 5 4 4M4 20l4-1L20 7a2.8 2.8 0 0 0-4-4L4 15z" /></svg>
+                纠正
+              </button>
+              <button class="mem-btn mem-btn-delete" type="button" @click="previewDeletion(item)">
+                <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 10v7m4-7v7" /></svg>
+                删除
+              </button>
             </div>
           </li>
         </ul>
 
-        <button v-if="store.memoryHasMore" type="button" @click="store.loadMoreMemories()">加载更多记忆</button>
+        <button v-if="store.memoryHasMore" class="mem-btn mem-btn-more" type="button" @click="store.loadMoreMemories()">加载更多记忆</button>
 
         <label v-if="store.longTermSuperseded.length" class="mem-toggle">
           <input v-model="showSuperseded" type="checkbox" />
@@ -249,8 +264,113 @@ function goalTitle(goalId) {
 .memory-editor { padding: 12px; border: 1px solid var(--border); border-radius: 10px; margin-bottom: 16px; }
 .memory-editor label { display: grid; gap: 5px; margin-bottom: 10px; font-size: 12px; }
 .memory-editor textarea, .memory-editor input, .memory-editor select { width: 100%; padding: 6px; border: 1px solid var(--border); border-radius: 5px; }
-.memory-actions { display: flex; gap: 10px; margin-top: 8px; }
-.memory-actions button, .memory-editor button { padding: 4px 8px; margin-right: 5px; }
+.panel-head.memory-heading {
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.memory-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.mem-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 30px;
+  padding: 4px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-soft);
+  font: 550 12px/1.4 var(--font);
+  white-space: nowrap;
+}
+
+.mem-btn svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.mem-btn:hover, .mem-btn-edit {
+  background: var(--primary-soft);
+  color: var(--primary-strong);
+}
+
+.mem-btn-edit, .mem-btn-delete {
+  border-color: transparent;
+}
+
+.mem-btn-delete {
+  background: transparent;
+}
+
+.mem-btn-edit:hover {
+  border-color: currentColor;
+}
+
+.mem-btn-danger, .mem-btn-danger:hover, .mem-btn-delete:hover {
+  color: var(--danger);
+  background: var(--danger-soft);
+  border-color: var(--danger-border);
+}
+
+.mem-btn-primary {
+  background: var(--primary-strong);
+  border-color: transparent;
+  color: var(--surface);
+}
+
+.mem-btn-primary:hover, .mem-btn-danger:hover {
+  border-color: currentColor;
+}
+
+.mem-btn-more {
+  width: 100%;
+  margin-top: 8px;
+}
+
+.memory-source summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 28px;
+  color: var(--text-soft);
+  font-size: 12px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.memory-source summary::-webkit-details-marker { display: none; }
+
+.memory-source summary::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border: solid currentColor;
+  border-width: 1.5px 1.5px 0 0;
+  transform: rotate(45deg);
+}
+
+.memory-source[open] summary::before { transform: rotate(135deg); }
+.memory-source summary:hover { color: var(--primary-strong); }
+.memory-source .mem-note {
+  margin: 0 0 6px 3px;
+  padding-left: 9px;
+  border-left: 2px solid var(--border-strong);
+  color: var(--text-soft);
+  overflow-wrap: anywhere;
+}
 
 .side {
   display: flex;
