@@ -13,6 +13,7 @@ export const usePlannerStore = defineStore('planner', () => {
   const messages = ref([]), streaming = ref(false), liveSteps = ref([]), liveStatus = ref(''), liveText = ref('')
   const error = ref(''), failedMessage = ref(''), ready = ref(false)
   const conversationId = ref(localStorage.getItem(conversationKey) || 'default')
+  const switching = ref(false)
   const privacyRevision = ref(-1), timezone = ref('Asia/Shanghai'), now = ref(Date.now())
   const timer = setInterval(() => { now.value = Date.now() }, 60000)
   onScopeDispose(() => clearInterval(timer))
@@ -62,7 +63,10 @@ export const usePlannerStore = defineStore('planner', () => {
 
   async function loadState() {
     try {
-      applySnapshot(await fetchState(conversationId.value))
+      const id = conversationId.value
+      const snapshot = await fetchState(id)
+      if (id !== conversationId.value) return
+      applySnapshot(snapshot)
       await loadHistory()
       error.value = ''
       if (pending && !streaming.value) await recoverPending()
@@ -98,7 +102,7 @@ export const usePlannerStore = defineStore('planner', () => {
 
   async function send(text) {
     const content = text.trim()
-    if (!content || streaming.value) return
+    if (!content || streaming.value || switching.value) return
     if (pending && pending.message !== content) {
       try { await recoverPending() } catch (err) { error.value = err.message; return }
       if (pending) return
@@ -157,8 +161,31 @@ export const usePlannerStore = defineStore('planner', () => {
   const rollover = () => change(apiRollover)
   async function resetAll() { if (await change(apiResetAll)) { savePending(null); await loadHistory() } }
   function retry() { if (failedMessage.value) return send(failedMessage.value) }
+  async function switchConversation(id) {
+    if (streaming.value || pending || switching.value) throw new Error('请先完成当前操作，再切换会话')
+    switching.value = true
+    try {
+      const [snapshot, history] = await Promise.all([
+        fetchState(id),
+        apiJSON(`/api/conversations/${encodeURIComponent(id)}/messages?limit=50`),
+      ])
+      if (history.privacy_revision !== snapshot.privacy_revision ||
+          snapshot.privacy_revision < privacyRevision.value || snapshot.state_revision < revision.value) {
+        throw new Error('档案刚刚更新，请重新打开会话')
+      }
+      ++historyGeneration
+      conversationId.value = id
+      localStorage.setItem(conversationKey, id)
+      applySnapshot(snapshot)
+      privacyRevision.value = history.privacy_revision
+      messages.value = history.messages.map((message) => ({ ...message, time: clock(message.created_at) }))
+      historyHasMore.value = history.has_more
+      activeTurn = ''; failedMessage.value = ''; error.value = ''
+    } finally { switching.value = false }
+  }
+
   function clearChat() {
-    if (streaming.value || pending) { error.value = '请先停止或确认当前操作结果'; return }
+    if (streaming.value || pending || switching.value) { error.value = '请先停止或确认当前操作结果'; return }
     conversationId.value = crypto.randomUUID(); localStorage.setItem(conversationKey, conversationId.value)
     messages.value = []; historyHasMore.value = false; error.value = ''
   }
@@ -189,7 +216,7 @@ export const usePlannerStore = defineStore('planner', () => {
       URL.revokeObjectURL(url)
     } catch (err) { error.value = err.message }
   }
-  return { goals, items, reviews, memory, messages, streaming, liveSteps, liveStatus, liveText, error, failedMessage, ready,
+  return { conversationId, switchConversation, switching, goals, items, reviews, memory, messages, streaming, liveSteps, liveStatus, liveText, error, failedMessage, ready,
     today, todayPending, activeGoals, progress, longTermActive, longTermSuperseded, shortTermSummary, memoryStats, hasPlan,
     memoryHasMore, historyHasMore, loadState, send, stop, toggleTask, createGoal, rollover, resetAll, retry, clearChat,
     exportArchive, loadMoreMemories, loadHistory, updateMemory, previewDeletion, deleteMemory, recoverPending }

@@ -246,9 +246,17 @@ def reset(body: WriteRequest | None = None) -> dict[str, Any]:
 
 
 @app.get('/api/conversations')
-def conversations() -> list[dict[str, Any]]:
+def conversations(offset: int = Query(default=0, ge=0), limit: int = Query(default=100, ge=1, le=100)) -> list[dict[str, Any]]:
     with transaction(session.service.repo.path, write=False) as db:
-        return [dict(row) for row in db.execute('SELECT * FROM conversations ORDER BY created_at DESC LIMIT 100')]
+        rows = db.execute("""
+            SELECT c.id, c.created_at, max(m.created_at) AS last_activity,
+                   (SELECT substr(content, 1, 60) FROM messages
+                    WHERE conversation_id=c.id AND role='user' AND deleted=0
+                    ORDER BY seq LIMIT 1) AS title
+            FROM conversations c JOIN messages m ON m.conversation_id=c.id AND m.deleted=0
+            GROUP BY c.id ORDER BY last_activity DESC, c.id LIMIT ? OFFSET ?
+        """, (limit, offset))
+        return [dict(row) for row in rows]
 
 
 @app.get('/api/export')

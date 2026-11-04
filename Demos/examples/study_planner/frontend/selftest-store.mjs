@@ -56,3 +56,23 @@ await old
 assert.equal(history.messages.length, 0)
 history.$dispose()
 console.log('store 自检通过：404 可同键重试；旧历史不能恢复已删除正文')
+
+let continuation
+const switching = await createStore({
+  apiJSON: async (path) => {
+    if (!path.includes('/session-b/messages')) throw new Error('读取失败')
+    return { messages: [{ id: 'previous', content: '之前的消息', role: 'user' }], privacy_revision: 0 }
+  },
+  streamChat: async (_text, onFrame, _signal, metadata) => {
+    continuation = metadata.conversation_id
+    onFrame({ event: 'done', data: { status: 'completed' } })
+  },
+})
+await switching.switchConversation('session-b')
+assert.equal(switching.messages[0].content, '之前的消息')
+await assert.rejects(switching.switchConversation('missing'), /读取失败/)
+assert.equal(switching.conversationId, 'session-b')
+await switching.send('继续聊')
+assert.equal(continuation, 'session-b')
+switching.$dispose()
+console.log('会话切换通过：恢复旧消息、加载失败保留原会话、续聊使用选中的会话 ID')
