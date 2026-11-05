@@ -71,6 +71,7 @@ function goalTitle(goalId) {
         <span v-if="item.key === 'today' && store.todayPending.length" class="tab-badge">
           {{ store.todayPending.length }}
         </span>
+        <span v-if="item.key === 'goals' && store.ready" class="tab-badge">{{ store.goals.length }}</span>
       </button>
     </nav>
 
