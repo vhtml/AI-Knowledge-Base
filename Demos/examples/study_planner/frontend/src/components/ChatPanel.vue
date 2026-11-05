@@ -207,6 +207,7 @@ watch(
   flex-direction: column;
   min-height: 0;
   height: 100%;
+  padding-inline: clamp(14px, 3%, 32px);
 }
 
 .chat-list {
@@ -528,6 +529,7 @@ watch(
 
 .composer-input {
   flex: 1;
+  min-width: 0;
   min-height: 26px;
   max-height: 180px;
   padding: 4px 2px;
