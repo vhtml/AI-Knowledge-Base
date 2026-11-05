@@ -76,11 +76,11 @@ export async function fetchState(conversationId = "default") {
  * @param {boolean} done 是否标记为已完成
  * @returns {Promise<object>} 更新后的状态快照
  */
-export async function toggleTask(taskId, done) {
+export async function toggleTask(taskId, done, conversationId = 'default') {
   const res = await request(`${API_BASE}/api/tasks/${encodeURIComponent(taskId)}/toggle`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ done, request_id: crypto.randomUUID() }),
+    body: JSON.stringify({ done, conversation_id: conversationId, request_id: crypto.randomUUID() }),
   })
   return res.json()
 }
@@ -90,11 +90,11 @@ export async function toggleTask(taskId, done) {
  * @param {{title: string, deadline?: string, daily_minutes?: number}} payload 目标参数
  * @returns {Promise<object>} 更新后的状态快照
  */
-export async function createGoal(payload) {
+export async function createGoal(payload, conversationId = 'default') {
   const res = await request(`${API_BASE}/api/goals`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ request_id: crypto.randomUUID(), ...payload }),
+    body: JSON.stringify({ conversation_id: conversationId, request_id: crypto.randomUUID(), ...payload }),
   })
   return res.json()
 }
@@ -103,8 +103,8 @@ export async function createGoal(payload) {
  * 模拟跨天：清空短期工作区，值得沉淀的进长期档案。
  * @returns {Promise<object>} 更新后的状态快照
  */
-export async function rollover() {
-  const res = await request(`${API_BASE}/api/rollover`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ request_id: crypto.randomUUID() }) })
+export async function rollover(conversationId = 'default') {
+  const res = await request(`${API_BASE}/api/rollover`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ conversation_id: conversationId, request_id: crypto.randomUUID() }) })
   return res.json()
 }
 
@@ -112,8 +112,8 @@ export async function rollover() {
  * 清空全部数据。
  * @returns {Promise<object>} 更新后的状态快照
  */
-export async function resetAll() {
-  const res = await request(`${API_BASE}/api/reset`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ request_id: crypto.randomUUID() }) })
+export async function resetAll(conversationId = 'default') {
+  const res = await request(`${API_BASE}/api/reset`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ conversation_id: conversationId, request_id: crypto.randomUUID() }) })
   return res.json()
 }
 

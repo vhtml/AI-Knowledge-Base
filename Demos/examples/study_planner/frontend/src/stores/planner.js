@@ -161,11 +161,11 @@ export const usePlannerStore = defineStore('planner', () => {
   }
   async function toggleTask(id) {
     const target = items.value.find((i) => i.id === id)
-    if (target) return change(() => apiToggleTask(id, !target.done))
+    if (target) return change(() => apiToggleTask(id, !target.done, conversationId.value))
   }
-  const createGoal = (payload) => change(() => apiCreateGoal(payload))
-  const rollover = () => change(apiRollover)
-  async function resetAll() { if (await change(apiResetAll)) { savePending(null); await loadHistory() } }
+  const createGoal = (payload) => change(() => apiCreateGoal(payload, conversationId.value))
+  const rollover = () => change(() => apiRollover(conversationId.value))
+  async function resetAll() { if (await change(() => apiResetAll(conversationId.value))) { savePending(null); await loadHistory() } }
   function retry() { if (failedMessage.value) return send(failedMessage.value) }
   async function switchConversation(id, source = '') {
     if (streaming.value || pending || switching.value) throw new Error('请先完成当前操作，再切换会话')
@@ -197,6 +197,30 @@ export const usePlannerStore = defineStore('planner', () => {
     messages.value = []; historyHasMore.value = false; error.value = ''
     sourceMessageId.value = ''
   }
+  async function deleteConversation(id, preview) {
+    if (pending || streaming.value || switching.value) throw new Error('请先结束当前操作，再删除会话')
+    switching.value = true
+    try {
+      await apiJSON(`/api/conversations/${encodeURIComponent(id)}`, 'DELETE', {
+        last_seq: preview.last_seq, revision: preview.revision,
+      })
+      ++historyGeneration
+      const wasCurrent = conversationId.value === id
+      if (wasCurrent) {
+        conversationId.value = crypto.randomUUID()
+        localStorage.setItem(conversationKey, conversationId.value)
+        messages.value = []; historyHasMore.value = false; sourceMessageId.value = ''
+        activeTurn = ''; failedMessage.value = ''
+      }
+      // 即使刷新暂时断网，也不能继续展示刚刚清除的原文摘录。
+      memory.value = { stats: {}, short: [], long: [] }
+      if (wasCurrent) await loadState()
+      else {
+        try { applySnapshot(await fetchState(conversationId.value)) }
+        catch (err) { error.value = err.message }
+      }
+    } finally { switching.value = false }
+  }
   async function loadMoreMemories() {
     try {
       const data = await apiJSON(`/api/memories?offset=${memory.value.long.length}`)
@@ -205,13 +229,13 @@ export const usePlannerStore = defineStore('planner', () => {
     } catch (err) { error.value = err.message }
   }
   async function updateMemory(item, changes = {}) {
-    const ok = await change(() => apiJSON(`/api/memories/${encodeURIComponent(item.id)}`, 'PATCH', { expected_revision: item.revision, request_id: crypto.randomUUID(), ...changes }))
+    const ok = await change(() => apiJSON(`/api/memories/${encodeURIComponent(item.id)}`, 'PATCH', { conversation_id: conversationId.value, expected_revision: item.revision, request_id: crypto.randomUUID(), ...changes }))
     if (ok) await loadHistory()
     return ok
   }
   async function previewDeletion(item) { return apiJSON(`/api/memories/${encodeURIComponent(item.id)}/deletion-preview`) }
   async function deleteMemory(item) {
-    const ok = await change(() => apiJSON(`/api/memories/${encodeURIComponent(item.id)}`, 'DELETE', { expected_revision: item.revision, request_id: crypto.randomUUID() }))
+    const ok = await change(() => apiJSON(`/api/memories/${encodeURIComponent(item.id)}`, 'DELETE', { conversation_id: conversationId.value, expected_revision: item.revision, request_id: crypto.randomUUID() }))
     if (ok) await loadHistory()
     return ok
   }
@@ -227,5 +251,5 @@ export const usePlannerStore = defineStore('planner', () => {
   return { conversationId, switchConversation, switching, sourceMessageId, goals, items, reviews, memory, messages, streaming, liveSteps, liveStatus, liveText, error, failedMessage, ready,
     today, todayPending, activeGoals, progress, longTermActive, longTermSuperseded, shortTermSummary, memoryStats, hasPlan,
     memoryHasMore, historyHasMore, loadState, send, stop, toggleTask, createGoal, rollover, resetAll, retry, clearChat,
-    exportArchive, loadMoreMemories, loadHistory, updateMemory, previewDeletion, deleteMemory, recoverPending }
+    exportArchive, loadMoreMemories, loadHistory, updateMemory, previewDeletion, deleteMemory, deleteConversation, recoverPending }
 })

@@ -1,6 +1,6 @@
 <!-- 侧栏面板：今日待办、目标、两级记忆 -->
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, nextTick, ref } from 'vue'
 import { usePlannerStore } from '../stores/planner'
 
 const store = usePlannerStore()
@@ -16,6 +16,24 @@ const tab = ref('today')
 const showSuperseded = ref(false)
 const editing = ref(null)
 const deleting = ref(null)
+
+async function showMemory(id) {
+  tab.value = 'memory'
+  showSuperseded.value = true
+  while (!store.memory.long.some(item => item.id === id) && store.memoryHasMore) {
+    const count = store.memory.long.length
+    await store.loadMoreMemories()
+    if (count >= store.memory.long.length) break
+  }
+  await nextTick()
+  const card = document.getElementById(`memory-${id}`)
+  if (card) {
+    card.focus({ preventScroll: true })
+    card.scrollIntoView({ block: 'center' })
+  } else store.error ||= '该条记忆已更新，请刷新档案'
+}
+
+defineExpose({ showMemory })
 
 function editMemory(item) {
   editing.value = { item, content: item.content, value: item.budget_value ?? '', scope: item.budget_scope ?? 'default' }
@@ -203,6 +221,8 @@ function goalTitle(goalId) {
           <li
             v-for="item in longTermShown"
             :key="item.id"
+            :id="`memory-${item.id}`"
+            tabindex="-1"
             class="mem"
             :class="{ 'is-superseded': item.superseded }"
           >

@@ -17,6 +17,41 @@ const sessions = ref([])
 const loading = ref(false)
 const more = ref(false)
 const historyError = ref('')
+const sidePanel = ref(null)
+const deletionDialog = ref(null)
+const deletion = ref(null)
+const deleting = ref(false)
+const deletionError = ref('')
+
+async function previewDelete(session) {
+  historyError.value = ''
+  try {
+    const preview = await apiJSON(`/api/conversations/${encodeURIComponent(session.id)}/deletion-preview`)
+    deletion.value = { session, preview }
+    deletionError.value = ''
+    await nextTick()
+    if (!deletionDialog.value.open) deletionDialog.value.showModal()
+  } catch (err) { historyError.value = err.message }
+}
+
+async function confirmDelete() {
+  if (deleting.value) return
+  deleting.value = true
+  const { session, preview } = deletion.value
+  try {
+    await store.deleteConversation(session.id, preview)
+    deletionDialog.value.close()
+    await listSessions()
+    historyClose.value?.focus()
+  } catch (err) { deletionError.value = err.message }
+  finally { deleting.value = false }
+}
+
+async function manageMemory(id) {
+  deletionDialog.value.close()
+  if (window.matchMedia('(max-width: 900px)').matches) closeHistory()
+  await sidePanel.value.showMemory(id)
+}
 
 async function listSessions(append = false) {
   const request = ++listRequest
@@ -99,7 +134,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="workbench" @keydown.esc="historyOpen && closeHistory()">
+  <div class="workbench" @keydown.esc="historyOpen && !deletionDialog?.open && closeHistory()">
     <header class="wb-header">
       <div class="wb-brand">
         <span class="wb-logo" aria-hidden="true">学</span>
@@ -149,17 +184,42 @@ onMounted(async () => {
         <p v-if="historyError" role="alert">{{ historyError }}</p>
         <p v-if="loading" role="status">正在读取会话…</p>
         <p v-else-if="!sessions.length && !historyError">还没有聊天记录。</p>
-        <button v-for="session in sessions" :key="session.id" class="session-row" type="button"
+        <div v-for="session in sessions" :key="session.id" class="session-line">
+          <button class="session-row" type="button"
                 :aria-current="session.id === store.conversationId ? 'true' : undefined"
                 :disabled="store.streaming || store.switching" @click="selectSession(session.id)">
-          <strong>{{ session.title || '历史会话' }}</strong>
-          <small>{{ new Date(session.last_activity).toLocaleString('zh-CN') }} {{ session.id === store.conversationId ? ' · 当前会话' : '' }}</small>
-        </button>
+            <strong>{{ session.title || '历史会话' }}</strong>
+            <small>{{ new Date(session.last_activity).toLocaleString('zh-CN') }} {{ session.id === store.conversationId ? ' · 当前会话' : '' }}</small>
+          </button>
+          <details class="session-options">
+            <summary :aria-label="`会话操作：${session.title || '历史会话'}`">···</summary>
+            <button type="button" class="delete-action" :disabled="store.streaming || store.switching"
+                    @click="$event.currentTarget.parentElement.open = false; previewDelete(session)">删除会话</button>
+          </details>
+        </div>
         <button v-if="more" type="button" class="btn-ghost" :disabled="loading" @click="listSessions(true)">加载更多会话</button>
       </aside>
       <ChatPanel :key="store.conversationId" />
-      <SidePanel @open-source="openSource" />
+      <SidePanel ref="sidePanel" @open-source="openSource" />
     </main>
+    <dialog ref="deletionDialog" class="delete-dialog" aria-labelledby="delete-title"
+            @cancel="deleting && $event.preventDefault()" @close="!$event.target.open && (deletion = null)">
+      <template v-if="deletion">
+        <h2 id="delete-title">删除「{{ deletion.session.title || '历史会话' }}」？</h2>
+        <p>{{ deletion.preview.count }} 条聊天记录及其摘要、来源摘录将永久删除。学习档案、目标和计划会保留。</p>
+        <template v-if="deletion.preview.memories.length">
+          <h3>将保留的相关记忆</h3>
+          <ul><li v-for="item in deletion.preview.memories" :key="item.id">
+            {{ item.content }} <button type="button" class="btn-ghost" :disabled="deleting" @click="manageMemory(item.id)">管理记忆</button>
+          </li></ul>
+        </template>
+        <p v-if="deletionError" role="alert">{{ deletionError }}</p>
+        <footer>
+          <button type="button" autofocus class="btn-ghost" :disabled="deleting" @click="deletionDialog.close()">取消</button>
+          <button type="button" class="delete-action" :disabled="deleting || !!deletionError" @click="confirmDelete">确认删除</button>
+        </footer>
+      </template>
+    </dialog>
   </div>
 </template>
 
@@ -183,6 +243,18 @@ onMounted(async () => {
 }
 .session-row:hover, .session-row:focus-visible { background: var(--primary-soft); }
 .session-row small { color: var(--text-soft); }
+.session-line { display: flex; align-items: center; gap: 3px; }
+.session-options { flex: none; position: relative; }
+.session-options summary { list-style: none; cursor: pointer; padding: 4px 7px; color: var(--text-soft); }
+.session-options summary::-webkit-details-marker { display: none; }
+.session-options .delete-action { position: absolute; z-index: 1; right: 0; white-space: nowrap; box-shadow: var(--shadow); }
+.delete-action { padding: 6px 12px; border: 1px solid var(--danger-border); border-radius: 8px; color: var(--danger); background: var(--danger-soft); }
+.delete-dialog { width: min(420px, 90vw); padding: 20px; border: 1px solid var(--border); border-radius: var(--radius-lg); color: var(--text); background: var(--surface); }
+.delete-dialog::backdrop { background: rgb(15 23 42 / 40%); }
+.delete-dialog h2 { margin: 0; font-size: 17px; overflow-wrap: anywhere; }
+.delete-dialog h3, .delete-dialog p, .delete-dialog li { font-size: 14px; }
+.delete-dialog ul { max-height: 35vh; overflow-y: auto; padding-inline-start: 20px; }
+.delete-dialog footer { display: flex; justify-content: flex-end; gap: 8px; }
 
 .workbench {
   display: flex;

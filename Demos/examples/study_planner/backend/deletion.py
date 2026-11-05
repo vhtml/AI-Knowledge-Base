@@ -103,9 +103,59 @@ class DeletionService:
             self.append(handle, intent)
             self.apply(db, intent)
 
+    def conversation_preview(self, db: sqlite3.Connection, conversation_id: str) -> dict[str, Any]:
+        if db.execute("""SELECT 1 FROM turns WHERE conversation_id=?
+                         AND status IN ('accepted','analyzing','committed') LIMIT 1""", (conversation_id,)).fetchone():
+            raise ServiceError("CONVERSATION_BUSY", "会话正在处理回复，请结束后再删除")
+        row = db.execute("""SELECT count(*) AS count,max(seq) AS last_seq FROM messages
+                            WHERE conversation_id=? AND deleted=0""", (conversation_id,)).fetchone()
+        if not row["count"]:
+            raise ServiceError("NOT_FOUND", "会话已删除或不存在", 404)
+        related = db.execute("""SELECT DISTINCT m.id,m.content FROM memories m
+            JOIN memory_sources s ON s.memory_id=m.id JOIN messages msg ON msg.id=s.source_id
+            WHERE msg.conversation_id=? AND msg.deleted=0 AND m.status!='deleted' ORDER BY m.id""", (conversation_id,))
+        return {**dict(row), "memories": [dict(item) for item in related],
+                "revision": self.repo.profile(db)["state_revision"]}
+
+    def delete_conversation(self, conversation_id: str, last_seq: int, revision: int) -> None:
+        with self.locked_log() as handle, transaction(self.repo.path) as db:
+            for intent in self.records(handle):
+                if (intent.get("conversation"), intent.get("last_seq"), intent.get("revision")) == (conversation_id, last_seq, revision):
+                    self.apply(db, intent)
+                    return
+            preview = self.conversation_preview(db, conversation_id)
+            if preview["last_seq"] != last_seq or preview["revision"] != revision:
+                raise ServiceError("REVISION_CONFLICT", "会话或档案已更新，请重新查看删除范围")
+            intent = {"id": uid("del"), "conversation": conversation_id, "last_seq": last_seq, "revision": revision, "time": now_iso()}
+            self.append(handle, intent)
+            self.apply(db, intent)
+
+    def _erase_conversation(self, db: sqlite3.Connection, intent: dict) -> None:
+        # 用消息序号限定删除范围；恢复备份时也只清除当时确认过的会话内容。
+        target = (intent["conversation"], intent["last_seq"])
+        db.execute("""UPDATE memory_sources SET excerpt='' WHERE source_id IN
+            (SELECT id FROM messages WHERE conversation_id=? AND seq<=?)""", target)
+        db.execute("""UPDATE turns SET facts='',reply='',error_code='SOURCE_DELETED',lease_until=0,
+            status=CASE WHEN status IN ('accepted','analyzing','committed') THEN 'cancelled' ELSE status END
+            WHERE id IN (SELECT turn_id FROM messages WHERE conversation_id=? AND seq<=?)""", target)
+        db.execute("UPDATE messages SET deleted=1,content='' WHERE conversation_id=? AND seq<=?", target)
+        db.execute("UPDATE summaries SET valid=0,content='' WHERE conversation_id=? AND start_seq<=?", target)
+
     def apply(self, db: sqlite3.Connection, intent: dict) -> None:
         if db.execute("SELECT 1 FROM deletions WHERE id=?", (intent["id"],)).fetchone():
             return
+        if "conversation" in intent:
+            self._erase_conversation(db, intent)
+        else:
+            self._erase_sources(db, intent)
+        db.execute("UPDATE profile SET state_revision=state_revision+1,privacy_revision=privacy_revision+1")
+        db.execute("UPDATE summaries SET valid=0 WHERE privacy_revision!=(SELECT privacy_revision FROM profile)")
+        db.execute("INSERT INTO deletions VALUES (?,?)", (intent["id"], now_iso()))
+        if intent.get("turn_id"):
+            revision = db.execute("SELECT state_revision FROM profile").fetchone()[0]
+            db.execute("UPDATE turns SET status='completed',facts='已清除所选内容',reply='已清除所选内容',state_revision=?,lease_until=0 WHERE id=?", (revision, intent["turn_id"]))
+
+    def _erase_sources(self, db: sqlite3.Connection, intent: dict) -> None:
         visited, pending = set(), list(intent["source_ids"] + intent["memory_ids"])
         while pending:
             source_id = pending.pop()
@@ -140,12 +190,6 @@ class DeletionService:
             db.execute("DELETE FROM goals WHERE id=?", (gid,))
         for day in intent.get("reviews", []):
             db.execute("DELETE FROM reviews WHERE day=?", (day,))
-        db.execute("UPDATE profile SET state_revision=state_revision+1,privacy_revision=privacy_revision+1")
-        db.execute("UPDATE summaries SET valid=0 WHERE privacy_revision!=(SELECT privacy_revision FROM profile)")
-        db.execute("INSERT INTO deletions VALUES (?,?)", (intent["id"], now_iso()))
-        if intent.get("turn_id"):
-            revision = db.execute("SELECT state_revision FROM profile").fetchone()[0]
-            db.execute("UPDATE turns SET status='completed',facts='已清除所选内容',reply='已清除所选内容',state_revision=?,lease_until=0 WHERE id=?", (revision, intent["turn_id"]))
 
     def replay(self) -> None:
         with self.locked_log() as handle, transaction(self.repo.path) as db:

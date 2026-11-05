@@ -106,16 +106,21 @@ async def database_error(request: Request, exc: sqlite3.Error) -> JSONResponse:
 
 class WriteRequest(BaseModel):
     model_config = {"str_strip_whitespace": True}
+    conversation_id: str = Field(default='default', min_length=1, max_length=120)
     request_id: str | None = Field(default=None, min_length=1, max_length=120)
 
 
 class ChatRequest(WriteRequest):
     message: str = Field(min_length=1, max_length=4000)
-    conversation_id: str = Field(default='default', min_length=1, max_length=120)
 
 
 class ToggleRequest(WriteRequest):
     done: bool
+
+
+class ConversationDeletion(BaseModel):
+    last_seq: int = Field(ge=1)
+    revision: int = Field(ge=0)
 
 
 class GoalRequest(WriteRequest):
@@ -221,8 +226,8 @@ async def chat(body: ChatRequest) -> StreamingResponse:
 
 
 def execute(command: str, text: str, body: WriteRequest, payload: dict[str, Any] | None = None) -> dict[str, Any]:
-    result = session.service.submit('default', body.request_id or uid('request'), text, command=command, payload=payload)
-    return {**session.service.repo.snapshot(), 'operation': result.to_dict()}
+    result = session.service.submit(body.conversation_id, body.request_id or uid('request'), text, command=command, payload=payload)
+    return {**session.service.repo.snapshot(body.conversation_id), 'operation': result.to_dict()}
 
 
 @app.post('/api/tasks/{task_id}/toggle')
@@ -232,7 +237,7 @@ def toggle_task(task_id: str, body: ToggleRequest) -> dict[str, Any]:
 
 @app.post('/api/goals')
 def create_goal(body: GoalRequest) -> dict[str, Any]:
-    return execute('goal', f'创建目标：{body.title}', body, body.model_dump(exclude={'request_id'}))
+    return execute('goal', f'创建目标：{body.title}', body, body.model_dump(exclude={'request_id', 'conversation_id'}))
 
 
 @app.post('/api/rollover')
@@ -262,6 +267,18 @@ def conversations(offset: int = Query(default=0, ge=0), limit: int = Query(defau
 @app.get('/api/export')
 def export_archive() -> JSONResponse:
     return JSONResponse(content=session.service.repo.export(), headers={'Content-Disposition': 'attachment; filename="study-planner-export.json"'})
+
+
+@app.get('/api/conversations/{conversation_id}/deletion-preview')
+def conversation_deletion_preview(conversation_id: str) -> dict[str, Any]:
+    with transaction(session.service.repo.path, write=False) as db:
+        return session.service.deletion.conversation_preview(db, conversation_id)
+
+
+@app.delete('/api/conversations/{conversation_id}')
+def delete_conversation(conversation_id: str, body: ConversationDeletion) -> dict[str, bool]:
+    session.service.deletion.delete_conversation(conversation_id, body.last_seq, body.revision)
+    return {'deleted': True}
 
 
 @app.get('/api/conversations/{conversation_id}/messages')
@@ -300,7 +317,7 @@ def deletion_preview(memory_id: str) -> dict[str, Any]:
 
 @app.patch('/api/memories/{memory_id}')
 def correct_memory(memory_id: str, body: MemoryRequest) -> dict[str, Any]:
-    payload = body.model_dump(exclude={'request_id'}, exclude_none=True)
+    payload = body.model_dump(exclude={'request_id', 'conversation_id'}, exclude_none=True)
     payload['id'] = memory_id
     return execute('memory_confirm', '确认或纠正学习记忆', body, payload)
 
