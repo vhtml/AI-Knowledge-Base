@@ -179,7 +179,13 @@ class TurnService:
                                 return active[0]
                     return 60
                 planner = StudyPlanner(memory, goals, items, reviews, budget_for_day=budget, business_day=business_day)
-                planner.reporter = lambda step: emit("step", vars(step))
+                steps: list[dict[str, Any]] = []
+
+                def report(data: dict[str, Any]) -> None:
+                    steps.append(data)
+                    emit("step", data)
+
+                planner.reporter = lambda step: report(vars(step))
                 emit("status", {"text": "正在读取学习档案…"})
                 planner.context_source_ids = []
                 facts = self.analyze(planner, text, command, payload or {}, turn_id)
@@ -204,7 +210,7 @@ class TurnService:
                     db.executemany("INSERT OR IGNORE INTO artifact_sources VALUES ('turn',?,?)", [(turn_id, sid) for sid in planner.context_source_ids + [source]])
                     db.execute("UPDATE profile SET state_revision=state_revision+1")
                     db.execute("UPDATE turns SET status='committed',facts=?,state_revision=? WHERE id=?", (facts, revision + 1, turn_id))
-                emit("step", {"phase": "提交", "title": "变更已保存", "ok": True, "detail": f"版本 {revision+1}"})
+                report({"phase": "提交", "title": "变更已保存", "ok": True, "detail": f"版本 {revision+1}"})
                 reply, degraded = facts, False
                 if self.llm is not None and command == "chat" and not getattr(planner, "direct_reply", False):
                     try:
@@ -226,11 +232,14 @@ class TurnService:
                         reply, degraded = facts, True
                 with transaction(self.repo.path) as db:
                     if self.repo.profile(db)["privacy_revision"] != profile["privacy_revision"]:
+                        steps.clear()
                         reply, degraded = "来源已更新或删除，请重新发起这一轮。", True
                     db.execute("UPDATE turns SET status='completed',reply=?,degraded=?,lease_until=0 WHERE id=?", (reply, int(degraded), turn_id))
                     seq = db.execute("SELECT coalesce(max(seq),0)+1 FROM messages WHERE conversation_id=?", (row["conversation_id"],)).fetchone()[0]
                     assistant_id = uid("msg")
                     db.execute("INSERT INTO messages VALUES (?,?,?,?,?,?,?,?,0)", (assistant_id, row["conversation_id"], seq, turn_id, "assistant", reply, now_iso(), self.clock.day(profile["timezone"]).isoformat()))
+                    if command == "chat":
+                        db.execute("INSERT INTO reply_steps VALUES (?,?)", (assistant_id, dumps(steps)))
                     db.execute("INSERT INTO artifact_sources VALUES ('message',?,?)", (assistant_id, turn_id))
                 try:
                     self.maintenance.schedule(row["conversation_id"])

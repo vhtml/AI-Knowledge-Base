@@ -296,8 +296,13 @@ def conversation_messages(conversation_id: str, before_seq: int = 92233720368547
                 raise ServiceError('SOURCE_UNAVAILABLE', '原始消息已删除或无法访问', 404)
             # 带上紧随来源的回复，即使来源在几百轮之前，也只读取一页。
             before_seq = target['seq'] + min(limit, 3)
-        rows = db.execute('SELECT id,seq,role,content,created_at,turn_id FROM messages WHERE conversation_id=? AND seq<? AND deleted=0 ORDER BY seq DESC LIMIT ?', (conversation_id, before_seq, limit)).fetchall()
-        return {'messages': [dict(r) for r in reversed(rows)], 'has_more': len(rows) == limit,
+        rows = db.execute("""SELECT m.id,m.seq,m.role,m.content,m.created_at,m.turn_id,s.steps
+            FROM messages m LEFT JOIN reply_steps s ON s.message_id=m.id
+            WHERE m.conversation_id=? AND m.seq<? AND m.deleted=0 ORDER BY m.seq DESC LIMIT ?""",
+            (conversation_id, before_seq, limit)).fetchall()
+        messages = [{**dict(row), 'steps': json.loads(row['steps']) if row['steps'] else []}
+                    for row in reversed(rows)]
+        return {'messages': messages, 'has_more': len(rows) == limit,
                 'privacy_revision': session.service.repo.profile(db)['privacy_revision']}
 
 

@@ -127,13 +127,16 @@ watch(
           </div>
 
           <!-- 留痕轨迹：这轮动了哪块记忆 -->
-          <ul v-if="msg.steps?.length" class="trace">
-            <li v-for="(step, index) in msg.steps" :key="index" class="trace-item">
-              <span class="trace-phase">{{ step.phase }}</span>
-              <span class="trace-title">{{ step.title }}</span>
-              <span v-if="step.detail" class="trace-detail">{{ step.detail }}</span>
-            </li>
-          </ul>
+          <details v-if="msg.steps?.length" class="thinking">
+            <summary>思考过程 · {{ msg.steps.length }} 步</summary>
+            <ul class="trace">
+              <li v-for="(step, index) in msg.steps" :key="index" class="trace-item">
+                <span class="trace-phase">{{ step.phase }}</span>
+                <span class="trace-title">{{ step.title }}</span>
+                <span v-if="step.detail" class="trace-detail">{{ step.detail }}</span>
+              </li>
+            </ul>
+          </details>
 
           <div class="bubble" :class="`bubble--${msg.role}`">
             <p class="bubble-text">{{ msg.content }}</p>
@@ -160,13 +163,16 @@ watch(
             <span class="msg-time">{{ store.liveStatus || '处理中' }}</span>
           </div>
 
-          <ul v-if="store.liveSteps.length" class="trace trace--live">
-            <li v-for="(step, index) in store.liveSteps" :key="index" class="trace-item">
-              <span class="trace-phase">{{ step.phase }}</span>
-              <span class="trace-title">{{ step.title }}</span>
-              <span v-if="step.detail" class="trace-detail">{{ step.detail }}</span>
-            </li>
-          </ul>
+          <details v-if="store.liveSteps.length" class="thinking" open>
+            <summary>正在思考 · {{ store.liveSteps.length }} 步</summary>
+            <ul class="trace trace--live">
+              <li v-for="(step, index) in store.liveSteps" :key="index" class="trace-item">
+                <span class="trace-phase">{{ step.phase }}</span>
+                <span class="trace-title">{{ step.title }}</span>
+                <span v-if="step.detail" class="trace-detail">{{ step.detail }}</span>
+              </li>
+            </ul>
+          </details>
 
           <div v-if="store.liveText" class="bubble bubble--assistant bubble--live">
             <p class="bubble-text">{{ store.liveText }}</p>
@@ -349,6 +355,10 @@ watch(
 }
 
 /* 留痕轨迹 */
+.thinking { margin-bottom: 8px; }
+.thinking summary { cursor: pointer; color: var(--text-mute); font-size: 13px; }
+.thinking[open] summary { margin-bottom: 6px; }
+
 .trace {
   list-style: none;
   margin: 0 0 8px;

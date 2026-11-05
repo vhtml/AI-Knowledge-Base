@@ -38,6 +38,12 @@ class Repository:
             ZoneInfo(timezone_name)
         db = open_database(self.path)
         try:
+            db.execute("""CREATE TABLE IF NOT EXISTS reply_steps (
+                message_id TEXT PRIMARY KEY REFERENCES messages(id) ON DELETE CASCADE,
+                steps TEXT NOT NULL)""")
+            db.execute("""CREATE TRIGGER IF NOT EXISTS clear_reply_steps
+                AFTER UPDATE OF deleted ON messages WHEN NEW.deleted=1
+                BEGIN DELETE FROM reply_steps WHERE message_id=NEW.id; END""")
             # 兼容旧版本：按操作类型隐藏面板生成的消息，保留用户输入的同名文本。
             db.execute("""UPDATE messages SET deleted=1 WHERE deleted=0
                           AND turn_id IN (SELECT id FROM turns WHERE command='goal_delete')""")

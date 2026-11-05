@@ -128,6 +128,8 @@ def test_chat_stream() -> None:
         check("有 state 事件", "state" in names, str(names))
 
         steps = [data for name, data in events if name == "step"]
+        history = client.get("/api/conversations/default/messages").json()["messages"]
+        check("历史回复保留本轮步骤", history[-1]["steps"] == steps and not history[0]["steps"], str(history))
         check("留痕有多条", len(steps) >= 3, str(len(steps)))
         check(
             "留痕带阶段名",
