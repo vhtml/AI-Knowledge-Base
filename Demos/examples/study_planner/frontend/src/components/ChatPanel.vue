@@ -51,6 +51,11 @@ function scrollToBottom(smooth = true) {
   })
 }
 
+async function returnToLatest() {
+  await store.loadState()
+  if (!store.sourceMessageId) scrollToBottom(false)
+}
+
 /* ---------- 发送 ---------- */
 
 async function send(source) {
@@ -76,12 +81,13 @@ function onKeydown(event) {
 
 watch(
   () => store.messages.length + store.liveSteps.length,
-  () => scrollToBottom(),
+  () => { if (!store.sourceMessageId) scrollToBottom() },
 )
 </script>
 
 <template>
   <section class="chat">
+    <button v-if="store.sourceMessageId" type="button" class="source-return" @click="returnToLatest">返回最新消息</button>
     <button v-if="store.historyHasMore" type="button" @click="store.loadHistory(true)">加载更早对话</button>
     <!-- 消息流 -->
     <div ref="listRef" class="chat-list" role="log" aria-live="polite">
@@ -106,8 +112,10 @@ watch(
       <article
         v-for="msg in store.messages"
         :key="msg.id"
+        :id="`message-${msg.id}`"
+        tabindex="-1"
         class="msg"
-        :class="`msg--${msg.role}`"
+        :class="[`msg--${msg.role}`, { 'source-target': store.sourceMessageId === msg.id }]"
       >
         <div class="msg-avatar" :class="`avatar--${msg.role}`" aria-hidden="true">
           {{ msg.role === 'user' ? '我' : 'AI' }}
@@ -271,6 +279,11 @@ watch(
 }
 
 /* 消息 */
+.source-target .bubble { outline: 2px solid var(--primary); }
+.source-return {
+  align-self: center; margin-top: 8px; padding: 4px 12px; border: 0; border-radius: 10px;
+  color: var(--primary-strong); background: var(--primary-soft); font-size: 13px;
+}
 .msg {
   display: flex;
   gap: 11px;

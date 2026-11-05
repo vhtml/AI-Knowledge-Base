@@ -14,6 +14,7 @@ export const usePlannerStore = defineStore('planner', () => {
   const error = ref(''), failedMessage = ref(''), ready = ref(false)
   const conversationId = ref(localStorage.getItem(conversationKey) || 'default')
   const switching = ref(false)
+  const sourceMessageId = ref('')
   const privacyRevision = ref(-1), timezone = ref('Asia/Shanghai'), now = ref(Date.now())
   const timer = setInterval(() => { now.value = Date.now() }, 60000)
   onScopeDispose(() => clearInterval(timer))
@@ -58,6 +59,7 @@ export const usePlannerStore = defineStore('planner', () => {
     privacyRevision.value = data.privacy_revision
     const rows = data.messages.map((m) => ({ ...m, time: clock(m.created_at) }))
     messages.value = older ? [...rows, ...messages.value] : rows
+    if (!older) sourceMessageId.value = ''
     historyHasMore.value = data.has_more
   }
 
@@ -103,6 +105,10 @@ export const usePlannerStore = defineStore('planner', () => {
   async function send(text) {
     const content = text.trim()
     if (!content || streaming.value || switching.value) return
+    if (sourceMessageId.value) {
+      try { await switchConversation(conversationId.value) }
+      catch (err) { error.value = err.message; return }
+    }
     if (pending && pending.message !== content) {
       try { await recoverPending() } catch (err) { error.value = err.message; return }
       if (pending) return
@@ -161,13 +167,13 @@ export const usePlannerStore = defineStore('planner', () => {
   const rollover = () => change(apiRollover)
   async function resetAll() { if (await change(apiResetAll)) { savePending(null); await loadHistory() } }
   function retry() { if (failedMessage.value) return send(failedMessage.value) }
-  async function switchConversation(id) {
+  async function switchConversation(id, source = '') {
     if (streaming.value || pending || switching.value) throw new Error('请先完成当前操作，再切换会话')
     switching.value = true
     try {
       const [snapshot, history] = await Promise.all([
         fetchState(id),
-        apiJSON(`/api/conversations/${encodeURIComponent(id)}/messages?limit=50`),
+        apiJSON(`/api/conversations/${encodeURIComponent(id)}/messages?limit=50${source ? '&source=' + encodeURIComponent(source) : ''}`),
       ])
       if (history.privacy_revision !== snapshot.privacy_revision ||
           snapshot.privacy_revision < privacyRevision.value || snapshot.state_revision < revision.value) {
@@ -177,6 +183,7 @@ export const usePlannerStore = defineStore('planner', () => {
       conversationId.value = id
       localStorage.setItem(conversationKey, id)
       applySnapshot(snapshot)
+      sourceMessageId.value = source
       privacyRevision.value = history.privacy_revision
       messages.value = history.messages.map((message) => ({ ...message, time: clock(message.created_at) }))
       historyHasMore.value = history.has_more
@@ -188,6 +195,7 @@ export const usePlannerStore = defineStore('planner', () => {
     if (streaming.value || pending || switching.value) { error.value = '请先停止或确认当前操作结果'; return }
     conversationId.value = crypto.randomUUID(); localStorage.setItem(conversationKey, conversationId.value)
     messages.value = []; historyHasMore.value = false; error.value = ''
+    sourceMessageId.value = ''
   }
   async function loadMoreMemories() {
     try {
@@ -216,7 +224,7 @@ export const usePlannerStore = defineStore('planner', () => {
       URL.revokeObjectURL(url)
     } catch (err) { error.value = err.message }
   }
-  return { conversationId, switchConversation, switching, goals, items, reviews, memory, messages, streaming, liveSteps, liveStatus, liveText, error, failedMessage, ready,
+  return { conversationId, switchConversation, switching, sourceMessageId, goals, items, reviews, memory, messages, streaming, liveSteps, liveStatus, liveText, error, failedMessage, ready,
     today, todayPending, activeGoals, progress, longTermActive, longTermSuperseded, shortTermSummary, memoryStats, hasPlan,
     memoryHasMore, historyHasMore, loadState, send, stop, toggleTask, createGoal, rollover, resetAll, retry, clearChat,
     exportArchive, loadMoreMemories, loadHistory, updateMemory, previewDeletion, deleteMemory, recoverPending }

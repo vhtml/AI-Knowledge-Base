@@ -63,13 +63,38 @@ async function selectSession(id) {
   } catch (err) { historyError.value = err.message }
 }
 
+async function openSource(conversation, message) {
+  try {
+    await store.switchConversation(conversation, message)
+    if (historyOpen.value && window.matchMedia('(max-width: 900px)').matches) closeHistory()
+    await nextTick()
+    const target = document.getElementById(`message-${message}`)
+    target?.focus({ preventScroll: true })
+    target?.scrollIntoView({ block: 'center' })
+  } catch (err) { store.error = err.message }
+}
+
+watch(() => [store.conversationId, store.sourceMessageId], ([conversation, message]) => {
+  const url = new URL(window.location.href)
+  if (message) {
+    url.searchParams.set('conversation', conversation)
+    url.searchParams.set('source', message)
+  } else {
+    url.searchParams.delete('conversation')
+    url.searchParams.delete('source')
+  }
+  window.history.replaceState(null, '', url)
+})
+
 watch(() => store.streaming, (streaming) => {
   if (!streaming && historyOpen.value) listSessions()
 })
 
-onMounted(() => {
+onMounted(async () => {
   if (historyOpen.value) listSessions()
-  store.loadState()
+  const params = new URLSearchParams(window.location.search)
+  await store.loadState()
+  if (params.get('conversation') && params.get('source')) await openSource(params.get('conversation'), params.get('source'))
 })
 </script>
 
@@ -133,7 +158,7 @@ onMounted(() => {
         <button v-if="more" type="button" class="btn-ghost" :disabled="loading" @click="listSessions(true)">加载更多会话</button>
       </aside>
       <ChatPanel :key="store.conversationId" />
-      <SidePanel />
+      <SidePanel @open-source="openSource" />
     </main>
   </div>
 </template>

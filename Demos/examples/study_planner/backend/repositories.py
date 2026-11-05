@@ -70,7 +70,11 @@ class Repository:
             if item["constraint_id"]:
                 constraint = db.execute("SELECT scope,value FROM constraints WHERE id=?", (item["constraint_id"],)).fetchone()
                 item.update(budget_scope=constraint["scope"], budget_value=constraint["value"])
-            item["sources"] = [dict(s) for s in db.execute("SELECT source_id,excerpt FROM memory_sources WHERE memory_id=?", (item["id"],))]
+            item["sources"] = [dict(s) for s in db.execute("""
+                SELECT s.source_id,s.excerpt,m.conversation_id,m.deleted
+                FROM memory_sources s LEFT JOIN messages m ON m.id=s.source_id
+                WHERE s.memory_id=?
+            """, (item["id"],))]
             result.append(item)
         return result
 

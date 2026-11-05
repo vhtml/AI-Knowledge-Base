@@ -266,8 +266,14 @@ def export_archive() -> JSONResponse:
 
 @app.get('/api/conversations/{conversation_id}/messages')
 def conversation_messages(conversation_id: str, before_seq: int = 9223372036854775807,
-                          limit: int = Query(default=50, ge=1, le=100)) -> dict[str, Any]:
+                          limit: int = Query(default=50, ge=1, le=100), source: str | None = None) -> dict[str, Any]:
     with transaction(session.service.repo.path, write=False) as db:
+        if source is not None:
+            target = db.execute('SELECT seq FROM messages WHERE id=? AND conversation_id=? AND deleted=0', (source, conversation_id)).fetchone()
+            if target is None:
+                raise ServiceError('SOURCE_UNAVAILABLE', '原始消息已删除或无法访问', 404)
+            # 带上紧随来源的回复，即使来源在几百轮之前，也只读取一页。
+            before_seq = target['seq'] + min(limit, 3)
         rows = db.execute('SELECT id,seq,role,content,created_at,turn_id FROM messages WHERE conversation_id=? AND seq<? AND deleted=0 ORDER BY seq DESC LIMIT ?', (conversation_id, before_seq, limit)).fetchall()
         return {'messages': [dict(r) for r in reversed(rows)], 'has_more': len(rows) == limit,
                 'privacy_revision': session.service.repo.profile(db)['privacy_revision']}

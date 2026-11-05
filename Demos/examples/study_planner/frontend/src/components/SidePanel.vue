@@ -4,6 +4,13 @@ import { computed, ref } from 'vue'
 import { usePlannerStore } from '../stores/planner'
 
 const store = usePlannerStore()
+const emit = defineEmits(['open-source'])
+
+function followSource(event, source) {
+  if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return
+  event.preventDefault()
+  emit('open-source', source.conversation_id, source.source_id)
+}
 
 const tab = ref('today')
 const showSuperseded = ref(false)
@@ -206,7 +213,15 @@ function goalTitle(goalId) {
             <p class="mem-content">{{ item.content }}</p>
             <details v-if="item.sources?.length" class="memory-source">
               <summary>查看来源</summary>
-              <p v-for="source in item.sources" :key="source.source_id" class="mem-note">{{ source.excerpt }}</p>
+              <p v-for="source in item.sources" :key="source.source_id" class="mem-note">
+                <template v-if="source.deleted">来源消息已删除</template>
+                <template v-else>
+                  {{ source.excerpt }}
+                  <a v-if="source.conversation_id" class="source-link"
+                     :href="`?conversation=${encodeURIComponent(source.conversation_id)}&source=${encodeURIComponent(source.source_id)}`"
+                     @click="followSource($event, source)">打开原始对话</a>
+                </template>
+              </p>
             </details>
             <div class="memory-actions">
               <button v-if="item.status === 'pending'" class="mem-btn mem-btn-primary" type="button" @click="store.updateMemory(item)">确认</button>
@@ -365,6 +380,7 @@ function goalTitle(goalId) {
 
 .memory-source[open] summary::before { transform: rotate(135deg); }
 .memory-source summary:hover { color: var(--primary-strong); }
+.source-link { display: block; color: var(--primary-strong); text-underline-offset: 2px; }
 .memory-source .mem-note {
   margin: 0 0 6px 3px;
   padding-left: 9px;
