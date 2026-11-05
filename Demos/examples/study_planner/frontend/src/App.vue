@@ -77,6 +77,7 @@ onMounted(() => {
   <div class="workbench" @keydown.esc="historyOpen && closeHistory()">
     <header class="wb-header">
       <div class="wb-brand">
+        <span class="wb-logo" aria-hidden="true">学</span>
         <button ref="historyToggle" type="button" class="btn-ghost history-toggle" aria-controls="session-history"
                 :aria-expanded="historyOpen" @click="toggleHistory">
           <svg aria-hidden="true" viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -84,7 +85,6 @@ onMounted(() => {
           </svg>
           历史会话
         </button>
-        <span class="wb-logo" aria-hidden="true">学</span>
         <div class="wb-titles">
           <h1>学习规划师工作台</h1>
           <p>会话记忆 · 长期学习档案</p>
