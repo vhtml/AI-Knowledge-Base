@@ -8,7 +8,8 @@ import { usePlannerStore } from './stores/planner'
 
 const store = usePlannerStore()
 
-const historyOpen = ref(false)
+const historyOpenKey = 'study-planner-history-open'
+const historyOpen = ref(localStorage.getItem(historyOpenKey) === 'true')
 const historyToggle = ref(null)
 const historyClose = ref(null)
 let listRequest = 0
@@ -47,6 +48,14 @@ function closeHistory() {
   historyToggle.value?.focus()
 }
 
+watch(historyOpen, (open) => {
+  try {
+    localStorage.setItem(historyOpenKey, String(open))
+  } catch {
+    // 存储空间不足时仍允许在当前页面切换侧栏。
+  }
+})
+
 async function selectSession(id) {
   try {
     await store.switchConversation(id)
@@ -59,6 +68,7 @@ watch(() => store.streaming, (streaming) => {
 })
 
 onMounted(() => {
+  if (historyOpen.value) listSessions()
   store.loadState()
 })
 </script>
