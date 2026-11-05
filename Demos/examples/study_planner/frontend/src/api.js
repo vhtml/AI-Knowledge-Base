@@ -100,15 +100,6 @@ export async function createGoal(payload, conversationId = 'default') {
 }
 
 /**
- * 模拟跨天：清空短期工作区，值得沉淀的进长期档案。
- * @returns {Promise<object>} 更新后的状态快照
- */
-export async function rollover(conversationId = 'default') {
-  const res = await request(`${API_BASE}/api/rollover`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ conversation_id: conversationId, request_id: crypto.randomUUID() }) })
-  return res.json()
-}
-
-/**
  * 清空全部数据。
  * @returns {Promise<object>} 更新后的状态快照
  */

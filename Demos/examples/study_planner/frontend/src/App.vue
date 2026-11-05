@@ -159,14 +159,6 @@ onMounted(async () => {
         <button
           type="button"
           class="btn-ghost"
-          title="整理当前业务日，保留会话原文"
-          @click="store.rollover()"
-        >
-          整理记忆
-        </button>
-        <button
-          type="button"
-          class="btn-ghost"
           :disabled="!store.messages.length"
           @click="store.clearChat()"
         >

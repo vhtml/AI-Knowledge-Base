@@ -14,7 +14,7 @@ async function createStore(api, initial = {}) {
       getItem: (key) => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value), removeItem: (key) => storage.delete(key),
     } })
   const defaults = { fetchState: async () => snapshot, createGoal: async () => snapshot, resetAll: async () => snapshot,
-    rollover: async () => snapshot, toggleTask: async () => snapshot, streamChat: async () => {}, apiJSON: async () => ({ messages: [], privacy_revision: 0 }) }
+    toggleTask: async () => snapshot, streamChat: async () => {}, apiJSON: async () => ({ messages: [], privacy_revision: 0 }) }
   const module = new vm.SourceTextModule(source, { context })
   await module.link(async (name) => {
     const exports = name === 'vue' ? vue : name === 'pinia' ? pinia : { ...defaults, ...api }

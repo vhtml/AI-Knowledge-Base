@@ -1,7 +1,7 @@
 /** 服务端为唯一真相；用持久请求标识恢复断线操作。 */
 import { defineStore } from 'pinia'
 import { computed, ref, onScopeDispose } from 'vue'
-import { apiJSON, createGoal as apiCreateGoal, fetchState, rollover as apiRollover, resetAll as apiResetAll, streamChat, toggleTask as apiToggleTask } from '../api'
+import { apiJSON, createGoal as apiCreateGoal, fetchState, resetAll as apiResetAll, streamChat, toggleTask as apiToggleTask } from '../api'
 
 const pendingKey = 'study-planner-pending'
 const conversationKey = 'study-planner-conversation'
@@ -167,7 +167,6 @@ export const usePlannerStore = defineStore('planner', () => {
   const deleteGoal = (id) => change(() => apiJSON(`/api/goals/${encodeURIComponent(id)}`, 'DELETE', {
     conversation_id: conversationId.value, request_id: crypto.randomUUID(),
   }))
-  const rollover = () => change(() => apiRollover(conversationId.value))
   async function resetAll() { if (await change(() => apiResetAll(conversationId.value))) { savePending(null); await loadHistory() } }
   function retry() { if (failedMessage.value) return send(failedMessage.value) }
   async function switchConversation(id, source = '') {
@@ -253,6 +252,6 @@ export const usePlannerStore = defineStore('planner', () => {
   }
   return { conversationId, switchConversation, switching, sourceMessageId, goals, items, reviews, memory, messages, streaming, liveSteps, liveStatus, liveText, error, failedMessage, ready,
     today, todayPending, activeGoals, progress, longTermActive, longTermSuperseded, shortTermSummary, memoryStats, hasPlan,
-    memoryHasMore, historyHasMore, loadState, send, stop, toggleTask, createGoal, deleteGoal, rollover, resetAll, retry, clearChat,
+    memoryHasMore, historyHasMore, loadState, send, stop, toggleTask, createGoal, deleteGoal, resetAll, retry, clearChat,
     exportArchive, loadMoreMemories, loadHistory, updateMemory, previewDeletion, deleteMemory, deleteConversation, recoverPending }
 })
