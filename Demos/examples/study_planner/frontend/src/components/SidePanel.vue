@@ -17,12 +17,16 @@ const showSuperseded = ref(false)
 const editing = ref(null)
 const deleting = ref(null)
 const deletingGoal = ref('')
+const goalFeedback = ref('')
 
 async function deleteGoal(goal) {
   if (deletingGoal.value || !window.confirm(`确定删除目标「${goal.title}」及其全部待办（包括已完成任务）？历史对话与记忆会保留。`)) return
   deletingGoal.value = goal.id
-  try { await store.deleteGoal(goal.id) }
-  finally { deletingGoal.value = '' }
+  goalFeedback.value = ''
+  try {
+    const deleted = await store.deleteGoal(goal.id)
+    goalFeedback.value = deleted ? `已删除「${goal.title}」及关联待办。` : store.error
+  } finally { deletingGoal.value = '' }
 }
 
 async function showMemory(id) {
@@ -153,6 +157,7 @@ function goalTitle(goalId) {
         <span class="panel-sub">{{ store.activeGoals.length }} 个进行中</span>
       </div>
 
+      <p v-if="goalFeedback" class="panel-hint" role="status">{{ goalFeedback }}</p>
       <div v-if="!store.goals.length" class="panel-empty">
         <p>还没有记录目标。</p>
         <span class="panel-hint">在左侧说「我想学 XXX」</span>

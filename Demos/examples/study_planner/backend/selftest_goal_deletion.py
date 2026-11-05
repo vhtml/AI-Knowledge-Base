@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 
 from .db import transaction
+from .repositories import Repository
 from .main import session
 from .selftest_api import build_client
 
@@ -30,16 +31,23 @@ class GoalDeletionTests(unittest.TestCase):
                 self.assertTrue(any(i['goal_id'] == goal_id for i in before['items']))
                 self.assertEqual(after['items'], [i for i in before['items'] if i['goal_id'] != goal_id])
                 self.assertEqual(after['memory']['long'], before['memory']['long'])
-                for entry in before['memory']['short']:
-                    self.assertIn(entry, after['memory']['short'])
+                self.assertEqual(after['memory']['short'], before['memory']['short'])
                 with transaction(service.repo.path, write=False) as db:
                     self.assertEqual(history, [tuple(r) for r in db.execute(
-                        'SELECT id,content,deleted FROM messages LIMIT ?', (len(history),))])
+                        'SELECT id,content,deleted FROM messages')])
                 retry = client.request('DELETE', f'/api/goals/{goal_id}', json=payload)
                 self.assertEqual(retry.status_code, 200)
                 self.assertEqual(retry.json()['state_revision'], after['state_revision'])
                 missing = client.request('DELETE', f'/api/goals/{goal_id}', json={})
                 self.assertEqual(missing.status_code, 404)
+                # 旧版面板生成的消息在重新打开档案后也应从聊天记录中消失。
+                with transaction(service.repo.path) as db:
+                    turn = db.execute("SELECT id FROM turns WHERE request_id='delete-goal'").fetchone()[0]
+                    db.execute("""INSERT INTO messages VALUES
+                        ('old-delete','default',999,?,'user','删除目标及关联待办','','',0)""", (turn,))
+                Repository(service.repo.root)
+                visible = client.get('/api/conversations/default/messages').json()['messages']
+                self.assertEqual([row['id'] for row in visible], [row[0] for row in history])
                 # 模拟恢复删除前的业务快照和删除应用记录，外部清单应再次清理目标。
                 with transaction(service.repo.path) as db:
                     service.repo.save_domain(db, *domain)

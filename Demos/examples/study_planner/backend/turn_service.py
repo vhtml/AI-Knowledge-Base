@@ -118,10 +118,12 @@ class TurnService:
             db.execute("INSERT OR IGNORE INTO conversations VALUES (?,?)", (conversation_id, stamp))
             db.execute("INSERT INTO turns(id,request_id,input_hash,conversation_id,command,status,created_at,lease_until) VALUES (?,?,?,?,?,'accepted',?,?)",
                        (turn_id, request_id, fingerprint, conversation_id, command, stamp, time.time() + 900))
-            seq = db.execute("SELECT coalesce(max(seq),0)+1 FROM messages WHERE conversation_id=?", (conversation_id,)).fetchone()[0]
-            profile = self.repo.profile(db)
-            day = self.clock.day(profile["timezone"]).isoformat()
-            db.execute("INSERT INTO messages VALUES (?,?,?,?,?,?,?,?,0)", (uid("msg"), conversation_id, seq, turn_id, "user", text, stamp, day))
+            # 面板删除需要保留请求记录以支持重试，但无需创建聊天消息。
+            if command != "goal_delete":
+                seq = db.execute("SELECT coalesce(max(seq),0)+1 FROM messages WHERE conversation_id=?", (conversation_id,)).fetchone()[0]
+                profile = self.repo.profile(db)
+                day = self.clock.day(profile["timezone"]).isoformat()
+                db.execute("INSERT INTO messages VALUES (?,?,?,?,?,?,?,?,0)", (uid("msg"), conversation_id, seq, turn_id, "user", text, stamp, day))
         return turn_id, True
 
     def submit(self, conversation_id: str, request_id: str, text: str, *, command: str = "chat", payload: dict[str, Any] | None = None,

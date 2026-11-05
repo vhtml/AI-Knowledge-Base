@@ -38,6 +38,9 @@ class Repository:
             ZoneInfo(timezone_name)
         db = open_database(self.path)
         try:
+            # 兼容旧版本：按操作类型隐藏面板生成的消息，保留用户输入的同名文本。
+            db.execute("""UPDATE messages SET deleted=1 WHERE deleted=0
+                          AND turn_id IN (SELECT id FROM turns WHERE command='goal_delete')""")
             if fresh:
                 db.execute("UPDATE profile SET timezone=?", (timezone_name,))
         finally:
