@@ -164,6 +164,9 @@ export const usePlannerStore = defineStore('planner', () => {
     if (target) return change(() => apiToggleTask(id, !target.done, conversationId.value))
   }
   const createGoal = (payload) => change(() => apiCreateGoal(payload, conversationId.value))
+  const deleteGoal = (id) => change(() => apiJSON(`/api/goals/${encodeURIComponent(id)}`, 'DELETE', {
+    conversation_id: conversationId.value, request_id: crypto.randomUUID(),
+  }))
   const rollover = () => change(() => apiRollover(conversationId.value))
   async function resetAll() { if (await change(() => apiResetAll(conversationId.value))) { savePending(null); await loadHistory() } }
   function retry() { if (failedMessage.value) return send(failedMessage.value) }
@@ -250,6 +253,6 @@ export const usePlannerStore = defineStore('planner', () => {
   }
   return { conversationId, switchConversation, switching, sourceMessageId, goals, items, reviews, memory, messages, streaming, liveSteps, liveStatus, liveText, error, failedMessage, ready,
     today, todayPending, activeGoals, progress, longTermActive, longTermSuperseded, shortTermSummary, memoryStats, hasPlan,
-    memoryHasMore, historyHasMore, loadState, send, stop, toggleTask, createGoal, rollover, resetAll, retry, clearChat,
+    memoryHasMore, historyHasMore, loadState, send, stop, toggleTask, createGoal, deleteGoal, rollover, resetAll, retry, clearChat,
     exportArchive, loadMoreMemories, loadHistory, updateMemory, previewDeletion, deleteMemory, deleteConversation, recoverPending }
 })

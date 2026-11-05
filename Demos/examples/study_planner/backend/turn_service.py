@@ -129,10 +129,12 @@ class TurnService:
         turn_id, fresh = self.accept(conversation_id, request_id, text, command, payload)
         if on_event:
             on_event("operation", {"turn_id": turn_id, "request_id": request_id})
-        if fresh and command in ("reset", "memory_delete"):
+        if fresh and command in ("reset", "memory_delete", "goal_delete"):
             try:
                 if command == "reset":
                     self.deletion.reset(turn_id)
+                elif command == "goal_delete":
+                    self.deletion.delete_goal(payload["id"], turn_id)
                 else:
                     self.deletion.delete(payload["id"], payload["expected_revision"], turn_id)
             except Exception as exc:

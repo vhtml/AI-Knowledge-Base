@@ -16,6 +16,14 @@ const tab = ref('today')
 const showSuperseded = ref(false)
 const editing = ref(null)
 const deleting = ref(null)
+const deletingGoal = ref('')
+
+async function deleteGoal(goal) {
+  if (deletingGoal.value || !window.confirm(`确定删除目标「${goal.title}」及其全部待办（包括已完成任务）？历史对话与记忆会保留。`)) return
+  deletingGoal.value = goal.id
+  try { await store.deleteGoal(goal.id) }
+  finally { deletingGoal.value = '' }
+}
 
 async function showMemory(id) {
   tab.value = 'memory'
@@ -154,6 +162,9 @@ function goalTitle(goalId) {
         <li v-for="goal in store.goals" :key="goal.id" class="goal">
           <div class="goal-head">
             <span class="goal-title">{{ goal.title }}</span>
+            <button class="mem-btn mem-btn-delete" type="button"
+              :aria-label="`删除目标：${goal.title}`" :disabled="!!deletingGoal || store.streaming || store.switching"
+              @click="deleteGoal(goal)">{{ deletingGoal === goal.id ? '删除中…' : '删除' }}</button>
             <span v-if="goal.status !== 'active'" class="goal-status">{{ goal.status }}</span>
           </div>
           <p v-if="goal.deadline" class="goal-meta">截止 {{ goal.deadline }}</p>

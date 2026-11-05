@@ -94,6 +94,16 @@ class DeletionService:
             self.append(handle, intent)
             self.apply(db, intent)
 
+    def delete_goal(self, goal_id: str, turn_id: str) -> None:
+        with self.locked_log() as handle, transaction(self.repo.path) as db:
+            self.records(handle)
+            if not db.execute("SELECT 1 FROM goals WHERE id=?", (goal_id,)).fetchone():
+                raise ServiceError("NOT_FOUND", "目标不存在或已删除", 404)
+            intent = {"id": uid("del"), "goals": [goal_id], "memory_ids": [],
+                      "source_ids": [], "goal_only": True, "turn_id": turn_id, "time": now_iso()}
+            self.append(handle, intent)
+            self.apply(db, intent)
+
     def reset(self, turn_id: str) -> None:
         with self.locked_log() as handle, transaction(self.repo.path) as db:
             self.records(handle)
@@ -148,8 +158,11 @@ class DeletionService:
             self._erase_conversation(db, intent)
         else:
             self._erase_sources(db, intent)
-        db.execute("UPDATE profile SET state_revision=state_revision+1,privacy_revision=privacy_revision+1")
-        db.execute("UPDATE summaries SET valid=0 WHERE privacy_revision!=(SELECT privacy_revision FROM profile)")
+        if intent.get("goal_only"):
+            db.execute("UPDATE profile SET state_revision=state_revision+1")
+        else:
+            db.execute("UPDATE profile SET state_revision=state_revision+1,privacy_revision=privacy_revision+1")
+            db.execute("UPDATE summaries SET valid=0 WHERE privacy_revision!=(SELECT privacy_revision FROM profile)")
         db.execute("INSERT INTO deletions VALUES (?,?)", (intent["id"], now_iso()))
         if intent.get("turn_id"):
             revision = db.execute("SELECT state_revision FROM profile").fetchone()[0]

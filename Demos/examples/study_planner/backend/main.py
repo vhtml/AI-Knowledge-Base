@@ -240,6 +240,11 @@ def create_goal(body: GoalRequest) -> dict[str, Any]:
     return execute('goal', f'创建目标：{body.title}', body, body.model_dump(exclude={'request_id', 'conversation_id'}))
 
 
+@app.delete('/api/goals/{goal_id}')
+def delete_goal(goal_id: str, body: WriteRequest) -> dict[str, Any]:
+    return execute('goal_delete', '删除目标及关联待办', body, {'id': goal_id})
+
+
 @app.post('/api/rollover')
 def rollover(body: WriteRequest | None = None) -> dict[str, Any]:
     return execute('rollover', '整理当前业务日', body or WriteRequest())
