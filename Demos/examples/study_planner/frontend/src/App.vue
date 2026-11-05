@@ -1,6 +1,6 @@
 <!-- 工作台外壳：左侧对话，右侧状态面板 -->
 <script setup>
-import { onMounted, ref } from 'vue'
+import { nextTick, onMounted, ref, watch } from 'vue'
 import { apiJSON } from './api'
 import ChatPanel from './components/ChatPanel.vue'
 import SidePanel from './components/SidePanel.vue'
@@ -8,38 +8,55 @@ import { usePlannerStore } from './stores/planner'
 
 const store = usePlannerStore()
 
-const historyDialog = ref(null)
+const historyOpen = ref(false)
+const historyToggle = ref(null)
+const historyClose = ref(null)
+let listRequest = 0
 const sessions = ref([])
 const loading = ref(false)
 const more = ref(false)
 const historyError = ref('')
 
 async function listSessions(append = false) {
+  const request = ++listRequest
   loading.value = true
   historyError.value = ''
   try {
     const offset = append ? sessions.value.length : 0
     const rows = await apiJSON(`/api/conversations?limit=30&offset=${offset}`)
+    if (request !== listRequest) return
     sessions.value = append ? [...sessions.value, ...rows] : rows
     more.value = rows.length === 30
   } catch (err) {
-    historyError.value = err.message
-  } finally { loading.value = false }
+    if (request === listRequest) historyError.value = err.message
+  } finally { if (request === listRequest) loading.value = false }
 }
 
-function openHistory() {
+async function toggleHistory() {
+  if (historyOpen.value) return closeHistory()
+  historyOpen.value = true
   sessions.value = []
   more.value = false
-  historyDialog.value.showModal()
   listSessions()
+  await nextTick()
+  historyClose.value?.focus()
+}
+
+function closeHistory() {
+  historyOpen.value = false
+  historyToggle.value?.focus()
 }
 
 async function selectSession(id) {
   try {
     await store.switchConversation(id)
-    historyDialog.value.close()
+    if (window.matchMedia('(max-width: 900px)').matches) closeHistory()
   } catch (err) { historyError.value = err.message }
 }
+
+watch(() => store.streaming, (streaming) => {
+  if (!streaming && historyOpen.value) listSessions()
+})
 
 onMounted(() => {
   store.loadState()
@@ -47,9 +64,16 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="workbench">
+  <div class="workbench" @keydown.esc="historyOpen && closeHistory()">
     <header class="wb-header">
       <div class="wb-brand">
+        <button ref="historyToggle" type="button" class="btn-ghost history-toggle" aria-controls="session-history"
+                :aria-expanded="historyOpen" @click="toggleHistory">
+          <svg aria-hidden="true" viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5">
+            <rect x="2" y="3" width="16" height="14" rx="3" /><path d="M8 3v14" />
+          </svg>
+          历史会话
+        </button>
         <span class="wb-logo" aria-hidden="true">学</span>
         <div class="wb-titles">
           <h1>学习规划师工作台</h1>
@@ -62,7 +86,6 @@ onMounted(() => {
           <i class="wb-status-dot"></i>
           {{ store.streaming ? '处理中' : '就绪' }}
         </span>
-        <button type="button" class="btn-ghost" :disabled="store.streaming || loading" @click="openHistory">历史会话</button>
         <button
           type="button"
           class="btn-ghost"
@@ -82,23 +105,23 @@ onMounted(() => {
       </div>
     </header>
 
-    <dialog ref="historyDialog" class="history-dialog" aria-labelledby="history-title">
-      <header>
-        <h2 id="history-title">历史会话</h2>
-        <button type="button" class="btn-ghost" @click="historyDialog.close()">关闭</button>
-      </header>
-      <p v-if="historyError" role="alert">{{ historyError }}</p>
-      <p v-if="loading" role="status">正在读取会话…</p>
-      <p v-else-if="!sessions.length && !historyError">还没有聊天记录。</p>
-      <button v-for="session in sessions" :key="session.id" class="session-row" type="button"
-              :disabled="store.switching" @click="selectSession(session.id)">
-        <strong>{{ session.title || '历史会话' }}</strong>
-        <small>{{ new Date(session.last_activity).toLocaleString('zh-CN') }} {{ session.id === store.conversationId ? ' · 当前会话' : '' }}</small>
-      </button>
-      <button v-if="more" type="button" class="btn-ghost" :disabled="loading" @click="listSessions(true)">加载更多会话</button>
-    </dialog>
-
-    <main class="wb-body">
+    <main class="wb-body" :class="{ 'history-open': historyOpen }">
+      <aside v-show="historyOpen" id="session-history" class="history-sidebar" aria-labelledby="history-title">
+        <header>
+          <h2 id="history-title">历史会话</h2>
+          <button ref="historyClose" type="button" class="btn-ghost" aria-label="收起历史会话" @click="closeHistory">收起</button>
+        </header>
+        <p v-if="historyError" role="alert">{{ historyError }}</p>
+        <p v-if="loading" role="status">正在读取会话…</p>
+        <p v-else-if="!sessions.length && !historyError">还没有聊天记录。</p>
+        <button v-for="session in sessions" :key="session.id" class="session-row" type="button"
+                :aria-current="session.id === store.conversationId ? 'true' : undefined"
+                :disabled="store.streaming || store.switching" @click="selectSession(session.id)">
+          <strong>{{ session.title || '历史会话' }}</strong>
+          <small>{{ new Date(session.last_activity).toLocaleString('zh-CN') }} {{ session.id === store.conversationId ? ' · 当前会话' : '' }}</small>
+        </button>
+        <button v-if="more" type="button" class="btn-ghost" :disabled="loading" @click="listSessions(true)">加载更多会话</button>
+      </aside>
       <ChatPanel :key="store.conversationId" />
       <SidePanel />
     </main>
@@ -106,19 +129,18 @@ onMounted(() => {
 </template>
 
 <style scoped>
-.history-dialog {
-  width: min(420px, 92vw);
-  max-height: 70vh;
-  padding: 18px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+.history-toggle { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.history-toggle[aria-expanded="true"] { background: var(--primary-soft); color: var(--primary-strong); }
+.history-sidebar {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 12px;
+  border-right: 1px solid var(--border);
   background: var(--surface);
-  color: var(--text);
-  box-shadow: var(--shadow-lg);
 }
-.history-dialog::backdrop { background: rgb(12 20 40 / 35%); }
-.history-dialog header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-.history-dialog h2 { margin: 0; font-size: 16px; }
+.history-sidebar header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.history-sidebar h2 { margin: 0; font-size: 15px; }
+.session-row[aria-current="true"] { background: var(--primary-soft); color: var(--primary-strong); }
 .session-row {
   display: grid; gap: 4px; width: 100%; padding: 10px;
   text-align: left; overflow-wrap: anywhere; border: 0; border-radius: var(--radius-sm);
@@ -244,14 +266,25 @@ onMounted(() => {
 }
 
 .wb-body {
+  position: relative;
   flex: 1;
   min-height: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 340px;
 }
 
+.wb-body.history-open { grid-template-columns: clamp(200px, 19vw, 280px) minmax(0, 1fr) 340px; }
+
 @media (max-width: 900px) {
-  .wb-body {
+  .wb-header { flex-wrap: wrap; gap: 8px; }
+  .history-sidebar {
+    position: absolute;
+    inset: 0 auto 0 0;
+    z-index: 2;
+    width: min(280px, 85%);
+    box-shadow: var(--shadow-lg);
+  }
+  .wb-body, .wb-body.history-open {
     grid-template-columns: minmax(0, 1fr);
   }
 }
