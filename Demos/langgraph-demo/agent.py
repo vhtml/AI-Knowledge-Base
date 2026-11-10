@@ -159,7 +159,13 @@ agent = agent_builder.compile()
 def main() -> None:
     """用指南里的示例算式跑一遍，打印完整消息轨迹。"""
     messages = [HumanMessage(content="Add 3 and 4.")]
-    result = agent.invoke({"messages": messages})
+    try:
+        result = agent.invoke({"messages": messages})
+    except Exception as exc:  # noqa: BLE001 - 演示脚本：任何模型端错误都转成可读提示
+        # 免费端点配额很紧，限流是常态；给可操作提示，而不是甩一整段堆栈
+        print(f"调用模型失败：{type(exc).__name__}: {exc}")
+        print("提示：Demos/.env 里的免费模型限流严格，稍后重试，或改用付费模型 / 自备 key。")
+        raise SystemExit(1) from exc
     for m in result["messages"]:
         m.pretty_print()
     print(f"\nllm_calls: {result.get('llm_calls')}")
