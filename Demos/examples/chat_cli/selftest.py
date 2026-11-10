@@ -11,7 +11,9 @@ import tempfile
 from pathlib import Path
 
 from .context import ContextWindow, naive_summary
-from .messages import ROLE_ASSISTANT, ROLE_USER, Message
+from .messages import ROLE_ASSISTANT, ROLE_USER, Message, estimate_tokens
+from .llm import make_summarizer
+from .chat import Conversation
 from .storage import SessionStore
 
 PASSED = 0
@@ -152,6 +154,42 @@ def test_storage() -> None:
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
+def test_regressions() -> None:
+    print("\n[5] 恢复、预算和降级边界")
+    window = ContextWindow("系统" * 100, budget_tokens=100, keep_recent_turns=1)
+    window.add(Message(ROLE_USER, "问题" * 20))
+    check("系统提示为当前输入让出预算", window.build().used_tokens <= 100)
+    window.summary = Message("system", "摘要" * 100)
+    check("摘要裁剪后不超过预算", window.build().used_tokens <= 100)
+
+    class BrokenClient:
+        def complete(self, messages):
+            raise RuntimeError("offline")
+
+    result = make_summarizer(BrokenClient(), 20)([Message(ROLE_USER, "内容" * 200)], None)
+    check("降级摘要遵守长度上限", estimate_tokens(result) <= 20)
+    with tempfile.TemporaryDirectory() as directory:
+        store = SessionStore(directory)
+        store.save_meta(_new_meta("test"))
+        store.append_message("test", Message(ROLE_USER, "旧上下文"))
+        store.append_clear("test")
+        store.append_message("test", Message(ROLE_USER, "新上下文"))
+        recent, summary = store.load_context_state("test")
+        check("清空后恢复只载入新上下文", [m.content for m in recent] == ["新上下文"] and summary is None)
+        check("清空不删除完整历史", len(store.load_messages("test")) == 2)
+        meta = store.load_meta("test")
+        meta.title = "原始标题"
+        store.save_meta(meta)
+        class Client:
+            model = "test"
+            def complete(self, messages):
+                return "回答"
+        conversation = Conversation(ContextWindow("系统"), Client(), store, "test", use_stream=False)
+        list(conversation.ask("继续"))
+        check("恢复会话不覆盖标题", store.load_meta("test").title == "原始标题")
+        check("非流式回复记录结束原因", store.load_messages("test")[-1].meta["finish_reason"] == "stop")
+
+
 def _new_meta(session_id: str):
     from .storage import SessionMeta
 
@@ -176,6 +214,7 @@ def main() -> int:
     test_context_budget()
     test_context_compact()
     test_storage()
+    test_regressions()
 
     print("\n" + "=" * 56)
     print(f"通过 {PASSED} 项，失败 {FAILED} 项")

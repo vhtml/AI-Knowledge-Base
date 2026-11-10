@@ -26,18 +26,41 @@
 
 ## 快速开始
 
-在 `Demos/examples` 目录下运行：
+**必须在 `Demos/examples` 目录下运行**（包在 `examples` 下，Python 靠当前目录找包）：
 
 ```bash
-# 真实模型（从 Demos/.env 读 LLM_BASE_URL / LLM_API_KEY / LLM_MODEL）
-python -m chat_cli
+cd Demos/examples
 
-# 离线演示：不联网，用假客户端跑通多轮 / 流式 / 落盘 / 压缩全流程
-python -m chat_cli --mock
+# 推荐：uv 会自动带上 Demos 项目的依赖，并加载 Demos/.env
+uv run --project .. python -m chat_cli
+
+# 离线演示：不联网、不消耗 token，用假客户端跑通多轮 / 流式 / 落盘 / 压缩全流程
+uv run --project .. python -m chat_cli --mock
 
 # 小预算，方便立刻观察上下文压缩
-python -m chat_cli --mock --max-context-tokens 300 --keep-recent-turns 1
+uv run --project .. python -m chat_cli --mock --max-context-tokens 300 --keep-recent-turns 1
 ```
+
+裸解释器也行，但只够跑离线模式（`--mock` 不需要任何第三方依赖）：
+
+```bash
+cd Demos/examples && python3 -m chat_cli --mock
+```
+
+从任意目录运行，用 `PYTHONPATH` 指到包所在的目录：
+
+```bash
+PYTHONPATH=Demos/examples uv run --project Demos python -m chat_cli
+```
+
+### 常见报错
+
+| 报错 | 原因 | 解决 |
+| --- | --- | --- |
+| `No module named chat_cli` | 不在 `Demos/examples` 目录下 | `cd Demos/examples`，或加 `PYTHONPATH=Demos/examples` |
+| `ModuleNotFoundError: No module named 'dotenv'` | 用裸 `python3` 跑，缺依赖 | 用 `uv run --project .. python -m chat_cli`；离线模式可用 `python3 -m chat_cli --mock` |
+| `ModuleNotFoundError: No module named 'openai'` | 同上 | 同上，或先 `cd Demos && uv sync` |
+| `没有找到 API Key` | 没加载到 `Demos/.env` | 用 `uv run --project ..` 运行，或手动 `export LLM_API_KEY=...` |
 
 交互中的命令：
 
@@ -119,12 +142,12 @@ class Message:
 3. **token 是本地估算**，只服务于上下文预算控制：
 
    ```python
-   CJK 字符  → 1 字 ≈ 1 token（偏保守，宁可高估也不撑破预算）
+   CJK 字符  → 1 字 ≈ 1 token（启发式估算，不保证高估）
    其它字符  → 4 字符 ≈ 1 token
    ```
 
    真实计费以服务端返回的 `usage` 为准。这个估算决定了"哪些消息会被丢弃"，
-   所以宁可偏保守。
+   实际 tokenizer、消息封装和输出 token 均可能使真实用量不同，需预留余量。
 
 4. **派生消息有标记。** 上下文压缩产生的摘要也是一条 `Message`，
    但 `meta.synthetic = True`，可以在 `/history` 里和原始对话区分开。
@@ -151,13 +174,13 @@ class Message:
 
 保留优先级从高到低：
 
-1. **系统提示** —— 超预算时截断，永远在上下文第一位。
+1. **系统提示** —— 为最新消息预留空间后按需截断，始终在第一位。
 2. **最新一条消息** —— 永远保留（哪怕它自己就超预算）。
 3. **历史摘要** —— 占用剩余预算；放不下就**截断摘要正文**而不是整条丢弃
    （半截摘要也比没有摘要有用）。
 4. **其余近期消息** —— 从新到旧依次装入，放不下的丢弃。
 
-装配结果永远不会超过预算（除非单条消息本身就超预算）。
+装配结果通常不超过本地估算预算；若最新消息与系统消息开销之和超预算，仍会保留最新消息并超出。实际请求还需为模型回复预留空间。
 每轮对话结束后还会打印两个不同的数字：
 
 ```
@@ -175,7 +198,7 @@ class Message:
 
 1. 按"轮"（一条用户消息 + 后续助手消息）切分，保留最近 N 轮原文。
 2. 更早的消息交给压缩器，生成一段不超过 200 token 的摘要。
-3. 新摘要 = 旧摘要 + 本次折叠内容的合并结果（摘要不会丢历史）。
+3. 新摘要由旧摘要和本次折叠内容生成；压缩有损，重要细节仍可能丢失。
 4. 压缩事件写进会话文件，**完整历史一条不删**。
 
 压缩器优先调用模型生成高质量摘要；模型不可用时降级为
@@ -228,9 +251,10 @@ python -m chat_cli --mock --max-context-tokens 300 --keep-recent-turns 1
 | `session_start` | 会话创建，记录模型和系统提示词 |
 | `message` | 一条消息（完整 `Message.to_dict()`） |
 | `compaction` | 一次压缩：摘要 + 被折叠掉的消息 id |
+| `clear` | 清空工作记忆的边界，完整历史仍保留 |
 
 `compaction` 事件记录了被折叠消息的 id，所以 `--resume` 时能**精确还原**
-压缩后的工作记忆，而不是靠猜测。
+压缩后的工作记忆，而不是靠猜测；清空边界也会被回放。
 
 消息是**先落盘再请求**：即使模型调用失败，用户这句话也已经进了历史。
 
@@ -266,4 +290,4 @@ reply = client.complete(api_messages)            # 非流式：给摘要用
   在中间插入工具执行即可（参考同目录的 `agent5.py`）。
 - **更好的压缩**：`make_summarizer()` 换成结构化摘要（按主题分条），
   或换成滑动窗口 + 向量检索召回。
-- **多端同步**：事件流本身就是可合并的，`chat_cli` 与网页端可以共用同一份历史。
+- **多端同步**：可基于事件流设计同步，但还需要并发控制、冲突处理和访问权限。
