@@ -70,7 +70,7 @@ Web 设置 `STUDY_PLANNER_DATA_DIR=/path/to/new-data`，CLI 使用 `--data-dir /
 
 ## 备份与恢复
 
-成功操作后检查当日备份，Web 维护线程也会检查，保留最近 7 份每日快照。`/health` 报告 SQLite 版本、失败作业数和最近备份时间；后台错误只记录类型，不写原始对话或模型 prompt。
+成功操作后检查当日备份，Web 维护线程也会检查，保留最近 7 份每日快照。`/health` 报告 SQLite 版本、失败作业数和最近备份时间，并返回 `mode: model | rule`——有可用模型时是 `model`，没 key 或模型不可用时退回 `rule`；后台错误只记录类型，不写原始对话或模型 prompt。
 
 手动备份可以在线执行：
 
