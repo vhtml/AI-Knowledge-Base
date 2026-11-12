@@ -18,4 +18,5 @@ logs/
 node_modules/
 
 # agent skills (vendored from npx skills; version pinned in skills-lock.json)
-.minimax/skills/
+.minimax/
+.agents/
