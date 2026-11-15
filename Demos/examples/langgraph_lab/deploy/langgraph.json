@@ -1,0 +1,8 @@
+{
+  "dependencies": ["langgraph>=1.2.20", "langchain>=1.5.0"],
+  "graphs": {
+    "agent": "./graph.py:agent"
+  },
+  "env": "./.env",
+  "python_version": "3.13"
+}
