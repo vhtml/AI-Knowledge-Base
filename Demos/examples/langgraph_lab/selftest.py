@@ -85,7 +85,11 @@ def run_lessons() -> list[str]:
     """逐章跑确定性路径，把断言失败收集起来。"""
     failures: list[str] = []
     for lesson in LESSONS:
-        module = importlib.import_module(f"langgraph_lab.lessons.{lesson.module}")
+        try:
+            module = importlib.import_module(f"langgraph_lab.lessons.{lesson.module}")
+        except Exception as exc:  # noqa: BLE001 - 缺章节也要报出来而不是崩掉
+            failures.append(f"{lesson.key}（{lesson.title}）：导入失败 {type(exc).__name__}: {exc}")
+            continue
         try:
             module.run()
         except AssertionError as exc:

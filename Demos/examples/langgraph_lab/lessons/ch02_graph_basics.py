@@ -168,8 +168,11 @@ def check_mermaid_topology() -> None:
     graph = _build_simple_graph().compile()
     mermaid = graph.get_graph().draw_mermaid()
     print("  " + mermaid.replace("\n", "\n  "))
+    # 入口/出口节点在 Mermaid 里渲染成 __start__ / __end__
     ensure("shout" in mermaid, "Mermaid 里应该出现节点名 shout")
-    ensure("START" in mermaid, "Mermaid 里应该出现入口 START")
+    ensure("clean" in mermaid, "Mermaid 里应该出现节点名 clean")
+    ensure("__start__" in mermaid, f"Mermaid 里应该出现入口节点，实际 {mermaid[:200]}")
+    ensure("-->" in mermaid, "Mermaid 里应该出现边的连线")
 
 
 def _build_simple_graph() -> Any:
