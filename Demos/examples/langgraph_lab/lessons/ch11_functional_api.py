@@ -267,3 +267,38 @@ def run() -> None:
     check_interrupt_and_resume()
     rule("图 API 是设计用的，函数式 API 是包装用的")
     print("\n✓ 第 11 章通过")
+
+
+def run_live() -> None:
+    """真实模型路径：函数式 API 里用真模型做汇总这一步。
+
+    task 里的模型调用是"可重放"的——恢复时从检查点还原，所以适合放在 task 里。
+    """
+    from langgraph.func import entrypoint, task
+
+    from ..labkit import real_chat_model
+
+    banner("第 11 章 · 真实模型路径")
+    model = real_chat_model()
+
+    @task
+    def summarize(rows: list[dict[str, int]]) -> str:
+        text = "；".join(f"{row['name']} {row['score']} 分" for row in rows)
+        reply = model.invoke(f"把下面的分数用一句话总结：{text}")
+        return str(reply.content)
+
+    @entrypoint()
+    def pipeline(payload: dict) -> dict[str, Any]:
+        rows = [dict(row) for row in FAKE_ROWS]
+        doubled = [{**row, "score": row["score"] * 2} for row in rows]
+        return {"rows": doubled, "summary": summarize(doubled).result()}
+
+    result = pipeline.invoke({})
+    print(f"  汇总：{result['summary']}")
+
+    ensure(bool(result["summary"].strip()), "真实模型应当给出非空汇总")
+    ensure(
+        len(result["rows"]) == len(FAKE_ROWS),
+        f"行数应当是 {len(FAKE_ROWS)}，实际 {len(result['rows'])}",
+    )
+    print("  ✓ 函数式 API + 真实模型跑通")

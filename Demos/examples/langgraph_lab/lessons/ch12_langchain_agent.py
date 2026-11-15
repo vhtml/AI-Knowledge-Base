@@ -271,3 +271,35 @@ def run() -> None:
     check_agent_as_graph_node()
     rule("钩子顺序记三遍：before 正、after 逆、wrap 嵌套")
     print("\n✓ 第 12 章通过")
+
+
+def run_live() -> None:
+    """真实模型路径：让真模型带着工具跑一轮完整循环。
+
+    断言只校验形状（消息链路完整、有最终回答），不校验内容——
+    真模型说什么不该由运行路径来管。
+    """
+    from langchain.agents import create_agent
+
+    from ..labkit import real_chat_model
+
+    banner("第 12 章 · 真实模型路径")
+    weather = build_weather_tool()
+    agent = create_agent(
+        real_chat_model(),
+        tools=[weather],
+        system_prompt="你是一个天气助手，回答要简短。",
+    )
+    result = agent.invoke({"messages": [human("杭州今天天气怎么样？")]})
+    messages = result["messages"]
+    for message in messages:
+        print(f"  [{message.type}] {str(message.content)[:90]}")
+
+    ensure(len(messages) >= 2, f"至少应当有用户与助手两条消息，实际 {len(messages)}")
+    ensure(
+        messages[-1].type == "ai",
+        f"最后一条应当是助手消息，实际 {messages[-1].type}",
+    )
+    ensure(bool(str(messages[-1].content).strip()), "最终回答不应当为空")
+    used_tool = any(m.type == "tool" for m in messages)
+    print(f"  ✓ 真实模型跑通，工具被调用：{used_tool}")
