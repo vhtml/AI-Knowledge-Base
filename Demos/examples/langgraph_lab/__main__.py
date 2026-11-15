@@ -82,6 +82,9 @@ def main(argv: list[str]) -> int:
             except AssertionError as exc:
                 failures.append(f"{lesson.key}（{lesson.title}）：{exc}")
                 print(f"\n!!! {lesson.key} 断言失败：{exc}")
+            except Exception as exc:  # noqa: BLE001 - 单章出错不该中断整轮
+                failures.append(f"{lesson.key}（{lesson.title}）：{type(exc).__name__}: {exc}")
+                print(f"\n!!! {lesson.key} 运行失败：{type(exc).__name__}: {exc}")
         print()
         print("=" * 72)
         if failures:
@@ -98,7 +101,13 @@ def main(argv: list[str]) -> int:
             failures = []
             for lesson in LESSONS:
                 print()
-                runner = getattr(lesson.load(), "run_live", None)
+                try:
+                    module = lesson.load()
+                except Exception as exc:  # noqa: BLE001 - 缺章节也要报出来
+                    failures.append(f"{lesson.key}：导入失败 {type(exc).__name__}: {exc}")
+                    print(f"\n!!! {lesson.key} 导入失败：{exc}")
+                    continue
+                runner = getattr(module, "run_live", None)
                 if runner is None:
                     print(f"{lesson.key} 没有真实模型路径，跳过。")
                     continue
@@ -108,6 +117,9 @@ def main(argv: list[str]) -> int:
                 except AssertionError as exc:
                     failures.append(f"{lesson.key}：{exc}")
                     print(f"\n!!! {lesson.key} 断言失败：{exc}")
+                except Exception as exc:  # noqa: BLE001 - 单章出错不该中断整轮
+                    failures.append(f"{lesson.key}：{type(exc).__name__}: {exc}")
+                    print(f"\n!!! {lesson.key} 运行失败：{type(exc).__name__}: {exc}")
             print()
             print("=" * 72)
             if failures:
