@@ -39,7 +39,7 @@
 | `Demos/examples/skills/` | 最小 skill 样例 | 一个 SKILL.md 长什么样 | — |
 | `Demos/examples/retry-demo/` | 重试与熔断 | 指数退避、熔断器 | — |
 | `Demos/examples/log-demo/` | 日志分级落盘 | loguru 分级 + 轮转 | — |
-| `Demos/langgraph-demo/` | LangGraph 入门 | `hello_graph.py` / `tool_basics.py` / `agent.py` | — |
+| `Demos/langgraph-demo/` | LangGraph 入门（旧草稿，已被 `langgraph_lab/` 取代） | `hello_graph.py` / `tool_basics.py` / `agent.py` | — |
 
 `Demos/examples/agent1.py` ~ `agent5.py` 是**学习草稿**：从最小模型调用一路写到工具调用和完整逻辑。
 它们不追求结构，但每一步都留着当时踩的坑。
