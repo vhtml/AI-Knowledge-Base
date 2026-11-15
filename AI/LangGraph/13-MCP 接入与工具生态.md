@@ -12,7 +12,7 @@
 MCP（[Model Context Protocol](https://modelcontextprotocol.io)）把这套接入统一成一个协议：
 
 ```
-┌──────────────────┐        MCP 协议（JSON-RPC over HTTP/stdio）
+┌──────────────────┐        MCP 协议（JSON-RPC over HTTP / stdio）
 │  你的 Agent      │  ──►  ┌──────────────────────────────┐
 │  LangGraph 图    │        │  MCP Server（服务端）        │
 └──────────────────┘        │  ├─ tools     可调用的函数    │
@@ -20,14 +20,8 @@ MCP（[Model Context Protocol](https://modelcontextprotocol.io)）把这套接�
         │                   │  └─ prompts   可复用的模板    │
         │                   └──────────────────────────────┘
         │                             │
-        │                    ┌────────┴────────┐
-        │                    │  一个 server    │
-        │                    │  可以是：       │
-        │                    │  · 本地进程      │
-        │                    │  · 远程 HTTP     │
-        │                    │  · 数据库        │
-        │                    │  · 浏览器/文件系统│
-        │                    └─────────────────┘
+        │              一个 server 可以是：本地进程 / 远程 HTTP /
+        │              数据库 / 浏览器 / 文件系统
 ```
 
 三类原语（[官方规范](https://modelcontextprotocol.io)）：
@@ -45,7 +39,7 @@ resources 和 prompts 仍然要通过原始 MCP 客户端（`fastmcp.Client` 的
 
 ---
 
-## 2. `langchain.mcp`：beta，但已经是官方路线
+## 2. `langchain.mcp`：beta，但已经是官方路线（[官方文档](https://docs.langchain.com/oss/python/langchain/mcp)）
 
 命名空间在 `langchain 1.4.0` 引入，要求 `langchain[mcp]>=1.4.0`，**目前是 beta**：
 
@@ -105,20 +99,19 @@ async def main():
 这是本章的核心问题。答案是：**和普通 LangChain 工具完全一样**，两条路径都行。
 
 ```
-                       MCP 服务器
-                            │  MCPAdapter.list_tools()
-                            ▼
-                 list[BaseTool]  ← 适配后的工具，长得和 @tool 一模一样
-                     │        │
-       路径 A         │        │         路径 B
-   ┌─────────────────┘        └──────────────────┐
-   │  节点里直接 await                        ToolNode(tools)
-   │  ┌──────────────┐                      ┌──────────────┐
-   │  │ my_node      │                      │  tools       │
-   │  │ await tool.  │                      │  ToolNode    │
-   │  │  ainvoke()   │                      └──────┬───────┘
-   │  └──────────────┘                             │
-   └───────────────────────────────────────────────┘
+                    MCP 服务器
+                        │  MCPAdapter.list_tools()
+                        ▼
+             list[BaseTool]  ← 适配后的工具，长得和 @tool 一模一样
+                 │              │
+      路径 A     │              │     路径 B
+  节点里直接 await          ToolNode(tools)
+  ┌───────────────────┐   ┌───────────────────┐
+  │ my_node           │   │ tools  (ToolNode) │
+  │ await tool.       │   └─────────┬─────────┘
+  │   ainvoke()       │             │
+  └───────────────────┘             ▼
+                          模型自己决定调不调
 ```
 
 路径 A（节点直接调）适合"这一步固定要用某个外部能力"的场景；
@@ -148,7 +141,7 @@ builder.add_node("tools", tool_node)
 
 ---
 
-## 5. 结果长什么样：内容块、artifact、错误
+## 5. 结果长什么样：内容块、artifact、错误（[Tools 文档](https://docs.langchain.com/oss/python/langchain/mcp/tools)）
 
 MCP 的返回不是字符串，是**内容块**。适配器把它翻译成 LangChain 的标准 content block：
 
@@ -165,7 +158,7 @@ MCP 的返回不是字符串，是**内容块**。适配器把它翻译成 LangC
 
 还有一层**溯源信息**挂在 `tool.metadata["mcp"]` 下：服务器自己声明的
 `read_only_hint` / `destructive_hint` 等注解、`_meta`、服务器名与版本。
-这让你可以**按服务器声明**而不是按工具名硬编码来做审批门禁：
+这让你可以**按服务器声明**（见 [FastMCP 的工具注解](https://gofastmcp.com/servers/tools)）而不是按工具名硬编码来做审批门禁：
 
 ```python
 def is_destructive(tool) -> bool:
@@ -175,18 +168,13 @@ def is_destructive(tool) -> bool:
 
 ---
 
-## 6. 生命周期与多服务器
+## 6. 生命周期与多服务器（[Connections 文档](https://docs.langchain.com/oss/python/langchain/mcp/connections)）
 
 ### 6.1 生命周期：工具活得比上下文久
 
 `MCPAdapter` 是异步上下文管理器。官方推荐的默认写法是"在里面发现工具，然后退出"：
-
-```
-async with MCPAdapter(target) as adapter:   # ← 连接在这里建立
-    tools = await adapter.list_tools()      # ← 发现
-# ← 连接在这里释放
-agent = create_agent(model, tools)          # ← 但 tools 仍然可用
-```
+`async with MCPAdapter(target) as adapter:` 里 `tools = await adapter.list_tools()`，
+退出上下文连接就释放了——**但 `tools` 仍然可用**。
 
 > **坑 2（反直觉）**：**工具在上下文退出后依然能调用**。
 > 适配器返回的工具对象自己持有 client，而 FastMCP 的 client 是**可重入**的：
@@ -219,7 +207,7 @@ agent = create_agent(model, tools)          # ← 但 tools 仍然可用
 
 ---
 
-## 7. 鉴权：三种粒度
+## 7. 鉴权：三种粒度（[Authentication 文档](https://docs.langchain.com/oss/python/langchain/mcp/auth)）
 
 鉴权全部委托给 FastMCP，凭证挂在**预建的 client** 上，再把 client 交给适配器
 （`Client(url, auth=...)` 的 `auth` 接受 bearer 字符串、字面量 `"oauth"` 或任意 `httpx.Auth`）：
@@ -241,13 +229,10 @@ async with MCPAdapter(client) as adapter:
 | **每服务器一份** | `ClientGroup` 里每个 client 各自 `auth` | 一个 Agent 连多个后端 |
 | **每用户一份** | graph factory 里按 `runtime.user.identity` 换 token | 生产部署 |
 
-两个细节：
-
-- OAuth 的 token **默认只存在内存里**，每次运行都重走一遍浏览器。
-  要跨运行复用，得自己传 `OAuth(..., token_storage=...)`。
-- **每用户鉴权**要配两半：Agent Server 侧先把请求解析成用户身份，
-  graph factory 里再拿这个身份换一张 per-user token 去连 MCP。
-  配套的缓存也要按用户分区。
+两个细节：OAuth 的 token **默认只存在内存里**，每次运行都重走一遍浏览器，
+要跨运行复用得自己传 `OAuth(..., token_storage=...)`；
+**每用户鉴权**要配两半——Agent Server 侧先把请求解析成用户身份，
+graph factory 里再拿这个身份换一张 per-user token 去连 MCP，配套的缓存也要按用户分区。
 
 ---
 
@@ -299,8 +284,7 @@ MCP 的 **elicitation**（服务端在工具执行中途反问客户端要输入
 
 ```python
 paused = await agent.ainvoke({"messages": [...]}, config)
-[interrupt] = paused["__interrupt__"]
-[question] = interrupt.value["requests"]
+[question] = paused["__interrupt__"][0].value["requests"][0]
 resumed = await agent.ainvoke(
     Command(resume={"responses": {question["key"]: {"action": "accept", "content": {...}}}}),
     config,
@@ -347,8 +331,7 @@ resumed = await agent.ainvoke(
 - 路径 B：MCP 工具进 `ToolNode`，产出 `status="success"` 的 ToolMessage，
   且 `artifact["structured_content"] == {"result": 42}`；
 - 错误路径：除零变成 `status="error"` 的 ToolMessage，服务器原话透传给模型；
-- `as_langchain_tool` 单工具转换；
-- `langchain.mcp` 的 beta 警告确实会抛。
+- `as_langchain_tool` 单工具转换；`langchain.mcp` 的 beta 警告确实会抛。
 
 跑法：
 

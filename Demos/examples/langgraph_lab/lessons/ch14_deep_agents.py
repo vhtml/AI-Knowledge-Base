@@ -366,7 +366,14 @@ def run_live() -> None:
     )
 
     result = agent.invoke(
-        {"messages": [human("把今天要做的事列成一个待办，然后写进 /todo.md。")]}
+        {
+            "messages": [
+                human(
+                    "请先用 write_todos 工具列出今天的待办（3 条），"
+                    "再用 write_file 工具把它们写进 /todo.md。"
+                )
+            ]
+        }
     )
 
     print(f"  todos：{result.get('todos')}")
