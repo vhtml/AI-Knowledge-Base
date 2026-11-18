@@ -26,6 +26,9 @@ uv run --project .. python -m ai_pm_lab list
 
 # 自检（不依赖 pytest）
 uv run --project .. python -m ai_pm_lab selftest
+
+# 校验教程笔记与实验是否一一对应
+uv run --project .. python -m ai_pm_lab notes
 ```
 
 实验只用标准库，裸解释器也能跑：
@@ -59,9 +62,10 @@ cd Demos/examples && python3 -m ai_pm_lab all
 ```
 ai_pm_lab/
 ├── __init__.py          包入口
-├── __main__.py          命令行入口（week1..week8 / all / list / selftest）
+├── __main__.py          命令行入口（week1..week8 / all / list / selftest / notes）
 ├── labkit.py            公共工具：素材加载、数据模型、表格渲染（按显示宽度对齐）
-├── selftest.py          自检（9 项）
+├── notes_check.py       教程笔记校验：章节齐 / 结构齐 / 互链可解析 / 章节与实验周对应
+├── selftest.py          自检（10 项）
 ├── weeks/
 │   ├── __init__.py      WEEKS 登记表：加一周只改这一处
 │   ├── week1.py … week8.py   每周一个模块，断言写在代码里
@@ -115,6 +119,10 @@ ai_pm_lab/
 | PRD 十节齐全 | 十个必需小节都在 |
 | 残缺方案包被拦下 | 临时复制一份残缺方案包，校验器必须判不通过且 CLI 退出码非 0 |
 | CLI list 可用 | `list` 子命令能跑通并列出八周 |
+| 笔记与实验一一对应 | 十六章 + 四附录 + 索引齐全；每章结构件齐；章节引用的实验周对得上；相对链接全部可解析；代码围栏成对；无占位符残留 |
+
+> 最后一项由 `notes_check.py` 提供，也可以单独跑：`python -m ai_pm_lab notes`。
+> 它把教程笔记和实验包绑在一起——**笔记改了但实验没跟上**，或**链接指向不存在的文件**，都会在这里报错。
 
 自检不验证"教程内容讲对了"——那由各周模块里的断言负责。
 自检验证的是**骨架没坏**：素材是完整的、模块都能跑、校验器确实会拦住不合格的方案包。
