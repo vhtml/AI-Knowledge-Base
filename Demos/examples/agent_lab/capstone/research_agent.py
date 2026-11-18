@@ -90,6 +90,20 @@ class ToolEntry:
         result = self.func(**arguments)
         return result if isinstance(result, str) else json.dumps(result, ensure_ascii=False)
 
+    def to_api(self) -> dict[str, Any]:
+        """转成 OpenAI 兼容接口的 tools 数组元素。
+
+        和 :class:`labkit.Tool` 的形状保持一致——换框架时这一层不用改。
+        """
+        return {
+            "type": "function",
+            "function": {
+                "name": self.name,
+                "description": self.description,
+                "parameters": self.parameters,
+            },
+        }
+
 
 # ---------------------------------------------------------------- 上下文预算（第 5 章）
 
