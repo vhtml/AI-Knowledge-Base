@@ -44,6 +44,7 @@ __all__ = [
     "SchedulePolicy",
     "approx",
     "banner",
+    "block_chain",
     "decode_step_time",
     "ensure",
     "fake_quantize",
@@ -764,8 +765,13 @@ class PagedKVCache:
             self.refcount[block_id] = count - 1
 
     def append_tokens(self, block_id: int, count: int) -> None:
-        """往块里写入 token。"""
-        self.blocks[block_id] = self.blocks.get(block_id, 0) + count
+        """往块里写入 token。
+
+        超过块容量的部分被截断——块装不下就是装不下，
+        宁可少算也不能让碎片率算出负数。
+        """
+        current = self.blocks.get(block_id, 0)
+        self.blocks[block_id] = min(self.block_size, current + count)
 
     def total_blocks(self) -> int:
         """已分配块数（含空闲）。"""
@@ -776,12 +782,20 @@ class PagedKVCache:
         return sum(1 for used in self.blocks.values() if used > 0)
 
     def fragmentation(self) -> float:
-        """碎片率：已分配但没填满的块占已分配块的比例。"""
-        allocated = self.total_blocks()
-        if allocated == 0:
+        """碎片率：正在使用的块里，有多少空间是空的。
+
+        只统计 ``used > 0`` 的块——已经回收回空闲队列的块不占显存，
+        算进去会把碎片率虚高。
+
+        分页的意义就在这里：传统做法按最大上下文给每条序列**预留**
+        连续显存，实际用不到的部分全浪费；分页只浪费"最后一块没填满"。
+        """
+        in_use = [used for used in self.blocks.values() if used > 0]
+        if not in_use:
             return 0.0
-        wasted = sum(block_size - used for used in self.blocks.values() if used < block_size)
-        return wasted / (allocated * block_size)
+        capacity = len(in_use) * self.block_size
+        wasted = sum(self.block_size - used for used in in_use)
+        return wasted / capacity
 
     def cache_prefix(self, prefix_hash: tuple[int, ...], block_ids: Sequence[int]) -> None:
         """把一段前缀登记进前缀缓存。"""
@@ -797,6 +811,9 @@ def prefix_hash(tokens: Sequence[int], granularity: int = 16) -> tuple[int, ...]
 
     用滚动多项式哈希（模 2^61-1 的简化版），只用于教程模拟，
     不追求抗碰撞——真实引擎用更严谨的哈希。
+
+    **注意这个哈希只能命中"整段完全相同"的请求**。
+    想命中"共享前缀"要用 :func:`block_chain`。
     """
     blocks = [
         tuple(tokens[i : i + granularity])
@@ -809,6 +826,38 @@ def prefix_hash(tokens: Sequence[int], granularity: int = 16) -> tuple[int, ...]
             block_acc = (block_acc * 131 + token + 1) % (2**61 - 1)
         acc = (acc * 1000003 + block_acc) % (2**61 - 1)
     return (acc, len(blocks))
+
+
+def block_chain(
+    tokens: Sequence[int],
+    block_size: int = 16,
+) -> list[tuple[tuple[int, int], int]]:
+    """给 token 序列生成**块级链式哈希**，这是前缀缓存真正的底层结构。
+
+    返回 ``[(节点键, 链哈希), ...]``，每个元素对应一个块。
+
+    节点键 = ``(父链哈希, 本块哈希)``，链哈希 = 父链哈希与本块哈希的混合。
+    这样做的意义：**前 N 个块相同的两个请求，前 N 个节点键必然相同**，
+    于是它们可以共享同一批 KV 块。
+
+    对比 :func:`prefix_hash`——那个把整段序列压成一个哈希，
+    只能判断"完全相同"，共享前缀反而命中不了。
+
+    真实引擎（vLLM 的 prefix caching、SGLang 的 RadixAttention）
+    用的是同一思路：把 token 序列切块，逐块哈希，连成一条前缀树。
+    """
+    chain: list[tuple[tuple[int, int], int]] = []
+    parent = 0
+    for start in range(0, len(tokens), block_size):
+        block = tokens[start : start + block_size]
+        block_hash = 0
+        for token in block:
+            block_hash = (block_hash * 131 + token + 1) % (2**61 - 1)
+        node_key = (parent, block_hash)
+        parent = (parent * 1000003 + block_hash) % (2**61 - 1)
+        chain.append((node_key, parent))
+    return chain
+
 
 
 # ---------------------------------------------------------------- 量化模拟

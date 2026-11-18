@@ -93,7 +93,15 @@ def main(argv: list[str]) -> int:
     if command == "capstone.selftest":
         from .capstone.selftest import run as run_capstone_selftest
 
-        return run_capstone_selftest()
+        failures = run_capstone_selftest()
+        if failures:
+            print()
+            print("=" * 72)
+            print(f"毕业作品自检未通过：{len(failures)} 项")
+            for item in failures:
+                print(f"  - {item}")
+            return 1
+        return 0
 
     return _run_chapter(command)
 
