@@ -5,6 +5,10 @@
 配套实验在 [`Demos/examples/agent_lab/`](../../Demos/examples/agent_lab/)，一章一篇笔记、一个能跑的实验，
 最后产出一个**带上下文预算、带记忆、带审批、带评测**的完整 Agent。
 
+> **毕业作品**：[`Demos/examples/agent_lab/capstone/`](../../Demos/examples/agent_lab/capstone/)——
+> 一个把 17 章护栏全部装上的研究助手 Agent（预算、记忆、风险分级、审批、轨迹、成本），
+> 配一份 8 条用例的黄金集和自检：`python -m agent_lab.capstone.selftest`。
+
 > **这套教程刻意不使用任何 Agent 框架。**
 > 全部实验只用标准库加 `openai` SDK，从零手写运行时。
 > 原因很简单：框架替你写了循环，你就永远看不清"框架到底替我做了什么"。
