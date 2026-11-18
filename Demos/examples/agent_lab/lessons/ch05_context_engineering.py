@@ -765,13 +765,13 @@ def check_token_reduction() -> None:
     history = [
         human("任务：定位线上延迟。"),
         ai("我先看监控面板。\n结论：延迟来自数据库连接池打满，采用方案 B。"),
+        message,
     ]
     history.extend(ai(f"排查记录 {index}：日志正常，继续。") for index in range(10))
-    history.append(message)
     history.append(human("把结论发我。"))
 
     policy = CompactionPolicy(
-        keep_head=1, keep_recent=2, history_token_budget=200, max_summary_chars=300
+        keep_head=1, keep_recent=1, history_token_budget=200, max_summary_chars=300
     )
     result = compact(history, policy)
 
@@ -944,19 +944,32 @@ def check_end_to_end_with_runtime() -> None:
         "期望模型收到压缩后的摘要（结论仍在），实际没收到",
     )
     ensure(
-        not any("排查记录 5" in m.content for m in seen),
-        "期望被折叠的中间消息不再出现在模型输入里，实际还在",
+        not any(m.content == "排查记录 5：日志正常，继续。" for m in seen),
+        "期望被折叠的中间消息不再以原文出现在模型输入里，实际还在",
+    )
+    ensure(
+        sum(1 for m in seen if m.content.startswith(SUMMARY_HEADER)) == 1,
+        "期望模型输入里恰好有一条摘要消息",
+    )
+    ensure(
+        any(m.role == "system" and "运维助手" in m.content for m in seen),
+        "期望系统提示原样进入模型输入，实际没有",
     )
     ensure(
         any("把结论发我。" in m.content for m in seen),
         "期望最近的消息仍然出现在模型输入里，实际不在",
     )
     ensure(
-        any(m.role == "system" and "只读操作" not in m.content for m in seen),
-        "期望模型输入里有系统消息",
+        len(seen) < len(history),
+        f"期望模型收到的消息少于原始历史 {len(history)} 条，实际 {len(seen)} 条",
     )
     print(f"  原始历史 {len(history)} 条 → 模型实际收到 {len(seen)} 条")
-    print(f"  模型看到的第一条摘要：{seen[1].content.splitlines()[1][:60]!r}")
+    summary_lines = next(
+        (m.content.splitlines() for m in seen if m.content.startswith(SUMMARY_HEADER)),
+        [],
+    )
+    if len(summary_lines) > 1:
+        print(f"  模型看到的摘要第一行：{summary_lines[1][:60]!r}")
 
 
 # ---------------------------------------------------------------- 真实模型路径
