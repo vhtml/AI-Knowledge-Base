@@ -14,7 +14,7 @@
 
 | 目录 | 放什么 | 现状 |
 | --- | --- | --- |
-| `AI/` | AI 领域笔记：Agent / LLM / MCP / Prompt / RAG / Skill 等 | `Skill/` `LangGraph/` 各有一套完整笔记，其余待填 |
+| `AI/` | AI 领域笔记：Agent / LLM / MCP / Prompt / RAG / Skill / 产品经理 等 | `Skill/` `LangGraph/` `AI-Product/` 各有一套完整笔记，其余待填 |
 | `Business/` | 商业知识：Growth / Marketing / Pricing / SaaS / Sales | 骨架 |
 | `Finance/` | 金融知识：Macro / Equity / Portfolio / Valuation | 骨架 |
 | `Projects/` | 独立项目工作区，一个项目一个子目录 | 骨架 |
@@ -36,6 +36,7 @@
 | `Demos/examples/study_planner/` | 学习规划师（SSE 流式 + 记忆系统） | 对话流、目标与待办、**记忆分层与检索** | `python -m study_planner.backend.selftest` |
 | `Demos/examples/life_assistant/` | 三工具 Agent | **工具选择**与**参数校验** | `python -m life_assistant.selftest` |
 | `Demos/examples/skill_lab/` | Skill 制作七天教程 | 7 个可运行实验 + 校验脚本 + 毕业作品 | `python -m skill_lab.selftest` |
+| `Demos/examples/ai_pm_lab/` | **AI 产品经理八周教程实验（16 章）** | 场景打分、评测门禁、单位经济、风险登记册 | `python -m ai_pm_lab selftest` |
 | `Demos/examples/skills/` | 最小 skill 样例 | 一个 SKILL.md 长什么样 | — |
 | `Demos/examples/retry-demo/` | 重试与熔断 | 指数退避、熔断器 | — |
 | `Demos/examples/log-demo/` | 日志分级落盘 | loguru 分级 + 轮转 | — |
@@ -86,6 +87,15 @@ uv run --project .. python -m skill_lab.selftest  # 自检
 
 全部实验离线运行：不联网、不消耗 token、不调用模型。跑挂了就是没学会。
 
+### 跑 AI 产品经理教程实验
+
+```bash
+cd Demos/examples
+uv run --project .. python -m ai_pm_lab all        # 八周全跑
+uv run --project .. python -m ai_pm_lab week3       # 只跑第 3 周
+uv run --project .. python -m ai_pm_lab selftest    # 自检
+```
+
 ### 跑各示例的自检
 
 自检大多不联网，但依赖在 `Demos/` 这一层，用裸 `python3` 会缺包：
@@ -97,6 +107,7 @@ uv run --project .. python -m life_assistant.selftest
 uv run --project .. python -m study_planner.backend.selftest
 uv run --project .. python -m skill_lab.selftest
 uv run --project .. python -m langgraph_lab.selftest
+uv run --project .. python -m ai_pm_lab selftest
 
 # rag-demo 的检索评估需要联网调 embedding，跑在它自己的目录下
 cd Demos/examples/rag-demo && uv run --project ../.. python -m backend.rag eval
@@ -128,6 +139,7 @@ cd Demos/examples/rag-demo && uv run --project ../.. python -m backend.rag eval
 
 ## 看哪里
 
+- 想学 **AI 产品经理** → [`AI/AI-Product/`](AI/AI-Product/README.md)，配 `Demos/examples/ai_pm_lab/`
 - 想学 **Skill 怎么写** → [`AI/Skill/`](AI/Skill/README.md)，配 `Demos/examples/skill_lab/`
 - 想学 **LangGraph 及其生态** → [`AI/LangGraph/`](AI/LangGraph/README.md)，配 `Demos/examples/langgraph_lab/`
 - 想看**上下文怎么管** → `Demos/examples/chat_cli/README.md` 的上下文管理章节
