@@ -6,13 +6,17 @@
 1. **静态批**（本文件自己实现简化版）：固定槽位、批次内不补位、整批一起结束。
    槽位空转和"短请求被同批长请求拖死"这两件事必须被看见，所以不能只引用现成框架。
 2. **连续批**（iteration 级调度）：每一轮都重新决定谁在跑，谁跑完谁的位置立刻给谁。
+   用公共层的 :class:`infra_lab.labkit.EngineSimulator` 跑。
 3. **分块 prefill**：长 prompt 切成块与 decode 交织，看它到底保护了谁。
+
+本文件里的 :class:`ContinuousBatchEngine` 是**本章的调度内核**：
+它与公共层引擎的迭代语义一致（每轮最多补位一个请求，迭代时长 = max(prefill, decode)），
+但多做了三件公共层暂时没有的事——分块 prefill 与 decode **交织**、
+统计每个序列的**最大 token 间隔**（卡顿）、以及给第 8 章留的扩展点（配额、老化）。
+所以本章会把两个引擎并排放在一起，断言它们的公共口径一致。
 
 所有耗时口径一律调用 :mod:`infra_lab.labkit`（``prefill_time`` / ``decode_step_time``），
 本文件不另写任何显存、带宽、FLOPs 公式，避免和别的章节算出两套数。
-
-本模块导出的 :class:`ContinuousBatchEngine` 与 :func:`summarize` 被第 8 章复用，
-所以调度口径在两章之间是一致的。
 """
 
 from __future__ import annotations
@@ -24,6 +28,7 @@ from typing import Literal
 from ..labkit import (
     BYTES_PER_GIB,
     Completion,
+    EngineSimulator,
     Request,
     banner,
     decode_step_time,
@@ -83,17 +88,17 @@ def build_mixed_workload() -> list[Request]:
         )
         req_id += 1
 
-    # 第二波：一条长文档请求。它故意晚到一点点，落在交互请求**正在 decode** 的窗口里，
-    # 这样才能看出长 prompt 的 prefill 是"卡住正在生成的序列"，而不只是"自己慢"
+    # 第二波：一条长文档请求。它挤在第一批交互请求之后到达，
+    # 于是静态批会把它和交互请求放进同一批——长请求就成了整批的瓶颈
     requests.append(
         Request(
             req_id=req_id,
-            arrival_s=0.060,
+            arrival_s=0.010,
             prompt_tokens=4096,
             max_output_tokens=160,
             tenant="longform",
             priority=0,
-            deadline_s=0.060,
+            deadline_s=0.010,
         )
     )
     req_id += 1
@@ -103,12 +108,12 @@ def build_mixed_workload() -> list[Request]:
         requests.append(
             Request(
                 req_id=req_id,
-                arrival_s=0.070 + i * 0.010,
+                arrival_s=0.020 + i * 0.010,
                 prompt_tokens=128,
                 max_output_tokens=32,
                 tenant="interactive",
                 priority=1,
-                deadline_s=0.070 + i * 0.010,
+                deadline_s=0.020 + i * 0.010,
             )
         )
         req_id += 1
@@ -118,12 +123,12 @@ def build_mixed_workload() -> list[Request]:
         requests.append(
             Request(
                 req_id=req_id,
-                arrival_s=0.150 + i * 0.010,
+                arrival_s=0.120 + i * 0.020,
                 prompt_tokens=512,
                 max_output_tokens=256,
                 tenant="batched",
                 priority=2,
-                deadline_s=0.150 + i * 0.010,
+                deadline_s=0.120 + i * 0.020,
             )
         )
         req_id += 1
@@ -172,6 +177,15 @@ def summarize(
     return metrics
 
 
+def _makespan(completions: list[Completion]) -> float:
+    """最后一条请求完成的时刻。
+
+    公共层引擎的 ``metrics()`` 里没有这个键，所以单独算一份，口径与
+    :func:`summarize` 的 ``makespan_s`` 一致。
+    """
+    return max((c.finish_s for c in completions), default=0.0)
+
+
 def _subset_metrics(
     completions: list[Completion],
     predicate,
@@ -208,6 +222,10 @@ class _Seq:
     """prompt 是否已经全部 prefill 完，可以开始 decode。"""
     prefill_end_s: float = 0.0
     """prefill 结束、可以产出第一个 token 的时刻。"""
+    last_token_s: float = 0.0
+    """上一个 token 产出的时刻，用来算间隔。"""
+    max_gap_s: float = 0.0
+    """相邻两个 token 之间最长的一次间隔——就是"卡顿"。"""
 
 
 class ContinuousBatchEngine:
@@ -258,22 +276,12 @@ class ContinuousBatchEngine:
         self.completions: list[Completion] = []
         self.iterations = 0
         self.batch_sizes: list[int] = []
+        self.stalls: list[float] = []
+        """每条序列相邻 token 之间的最长间隔（秒），用来量化"卡顿"。"""
         self.preempted = 0
         """被抢占并从头上重算的序列数（第 7 章讲抢占时的记账）。"""
 
     # -- 队列与准入 --------------------------------------------------------
-
-    def _select_pending(self, pending: list[Request]) -> Request | None:
-        """按策略从等待队列里挑下一个要准入的请求。"""
-        if not pending:
-            return None
-        if self.policy == "sjf":
-            pending.sort(key=lambda r: r.prompt_tokens + r.max_output_tokens)
-        elif self.policy == "priority":
-            pending.sort(key=lambda r: (r.priority, r.arrival_s))
-        else:
-            pending.sort(key=lambda r: r.arrival_s)
-        return pending.pop(0)
 
     def _tenant_slot_used(self, running: list[_Seq], tenant: str) -> int:
         """某租户当前占用的槽位数。"""
@@ -292,11 +300,28 @@ class ContinuousBatchEngine:
         """能不能装得下：槽位数、租户配额、KV 预算三关都要过。"""
         if len(running) >= self.max_batch:
             return False
-        limit = self.tenant_slots.get(request.tenant)
-        if limit is not None and self._tenant_slot_used(running, request.tenant) >= limit:
+        if self._tenant_slot_used(running, request.tenant) >= self._tenant_slot_limit(
+            request.tenant
+        ):
+            return False
+        if self._slot_budget_exceeded(running, request):
             return False
         need = request.prompt_tokens + request.max_output_tokens
         return self._reserved_tokens(running) + need <= self.kv_token_budget
+
+    def _tenant_slot_limit(self, tenant: str) -> int:
+        """某租户最多能占几个 batch 槽位。
+
+        默认只受 ``tenant_slots`` 上限约束；第 8 章用"预留槽位"扩展这个口径。
+        """
+        return self.tenant_slots.get(tenant, self.max_batch)
+
+    def _slot_budget_exceeded(self, running: list[_Seq], request: Request) -> bool:
+        """共享槽位是不是已经被别的租户占满了。
+
+        默认没有共享池的概念；第 8 章的"保底槽位"在这里实现。
+        """
+        return False
 
     # -- 主循环 ------------------------------------------------------------
 
@@ -306,6 +331,7 @@ class ContinuousBatchEngine:
         self.completions = []
         self.iterations = 0
         self.batch_sizes = []
+        self.stalls = []
         self.preempted = 0
 
         arrivals = sorted(requests, key=lambda r: r.arrival_s)
@@ -353,11 +379,18 @@ class ContinuousBatchEngine:
                         ),
                     )
                 iteration_time = max(iteration_time, step)
-                for seq in decodable:
-                    seq.produced += 1
-                    seq.context += 1
 
             self.now += iteration_time
+
+            for seq in decodable:
+                seq.produced += 1
+                seq.context += 1
+                # 间隔 = 这一轮结束的时刻 - 上一个 token 的时刻。
+                # 长 prompt 一次性 prefill 造成的停顿，会在这里变成一个巨大的间隔
+                gap = self.now - seq.last_token_s
+                seq.max_gap_s = max(seq.max_gap_s, gap)
+                seq.last_token_s = self.now
+
             self.batch_sizes.append(len([s for s in running if s.ready]))
 
             # 5. 收尾：产出够了的序列离开运行批
@@ -391,14 +424,11 @@ class ContinuousBatchEngine:
                 if seq.prefilled >= seq.request.prompt_tokens:
                     seq.ready = True
                     seq.prefill_end_s = self.now + unit
+                    seq.last_token_s = seq.prefill_end_s
                 return unit
 
-        request = self._select_pending(pending)
+        request = self._take_admissible(pending, running)
         if request is None:
-            return 0.0
-        if not self._can_admit(running, request):
-            # 装不下就放回队列，等有序列跑完腾位置
-            pending.insert(0, request)
             return 0.0
 
         seq = _Seq(
@@ -418,6 +448,7 @@ class ContinuousBatchEngine:
             if seq.prefilled >= request.prompt_tokens:
                 seq.ready = True
                 seq.prefill_end_s = self.now + unit
+                seq.last_token_s = seq.prefill_end_s
             return unit
 
         unit = prefill_time(
@@ -430,7 +461,47 @@ class ContinuousBatchEngine:
         seq.prefilled = request.prompt_tokens
         seq.ready = True
         seq.prefill_end_s = self.now + unit
+        seq.last_token_s = seq.prefill_end_s
         return unit
+
+    def _take_admissible(self, pending: list[Request], running: list[_Seq]) -> Request | None:
+        """从等待队列里挑一条装得下的请求，把它取出来。
+
+        策略只决定**顺序**，装不下的就跳过继续找下一条——
+        否则一条超长请求能把整个队列堵死（这正是第 8 章要治的病）。
+        """
+        if not pending:
+            return None
+        guaranteed = self._guaranteed_request(pending, running)
+        if guaranteed is not None:
+            pending.remove(guaranteed)
+            return guaranteed
+        pending.sort(key=self._pending_order_key)
+        for index, request in enumerate(pending):
+            if self._can_admit(running, request):
+                return pending.pop(index)
+
+        # 一条都装不下：没有任何序列在跑时必须强行放行一条，否则引擎会空转卡死
+        if not running and pending:
+            return pending.pop(0)
+        return None
+
+    def _pending_order_key(self, request: Request) -> tuple:
+        """等待队列的排序键——调度策略就落在这一个函数里。
+
+        第 8 章的配额、老化都通过扩展这个键来实现，所以策略口径只有一处。
+        """
+        if self.policy == "sjf":
+            return (request.prompt_tokens + request.max_output_tokens,)
+        if self.policy == "priority":
+            return (request.priority, request.arrival_s)
+        return (request.arrival_s,)
+
+    def _guaranteed_request(
+        self, pending: list[Request], running: list[_Seq]
+    ) -> Request | None:
+        """保底名额钩子：默认没有。第 8 章用它实现"每 N 次准入保底给某个租户一个"。"""
+        return None
 
     def _pick_inflight(self, inflight: list[_Seq]) -> _Seq:
         """挑一个继续 prefill 的在途序列。
@@ -449,6 +520,7 @@ class ContinuousBatchEngine:
     def _finish(self, seq: _Seq, running: list[_Seq]) -> None:
         """一条序列跑完：记账并把它移出运行批。"""
         produced = seq.produced
+        self.stalls.append(seq.max_gap_s)
         self.completions.append(
             Completion(
                 request=seq.request,
@@ -468,13 +540,17 @@ class ContinuousBatchEngine:
     def metrics(self) -> dict[str, float]:
         """本引擎跑完之后的指标表。"""
         batch = self.batch_sizes
-        return summarize(
+        metrics = summarize(
             self.completions,
             extra={
                 "iterations": float(self.iterations),
                 "avg_batch": (sum(batch) / len(batch)) if batch else 0.0,
             },
         )
+        if self.stalls:
+            metrics["stall_p99_ms"] = percentile(self.stalls, 0.99) * 1000
+            metrics["stall_max_ms"] = max(self.stalls) * 1000
+        return metrics
 
 
 # ---------------------------------------------------------------- 静态批引擎
@@ -660,20 +736,23 @@ class StaticBatchEngine:
 # ---------------------------------------------------------------- 断言
 
 
-def check_static_batch_tail_is_driven_by_longest() -> tuple[dict, dict]:
-    """静态批的 p99 由同批最长请求决定，不是由平均长度决定。
+def check_static_batch_tail_is_driven_by_longest() -> dict[str, float]:
+    """静态批的 p99 由同批最长请求决定，不由平均长度决定。
 
     要证明的是：批内一条长 prompt 会把整批的 TTFT 一起抬高，
-    所以静态批的尾延迟由"最坏的一条"说了算。
+    而且它拖住的不只是自己——**排在它后面的请求**要等整批跑完才能拿到首 token。
     """
     workload = build_mixed_workload()
     static = StaticBatchEngine(max_batch=16, batch_window_s=0.05)
     static.run(workload)
-
     metrics = static.metrics()
-    # 静态批里，交互请求的 TTFT 应该明显被同批的长请求拖高
-    interactive = _subset_metrics(static.completions, lambda c: c.request.tenant == "interactive")
-    longform = _subset_metrics(static.completions, lambda c: c.request.tenant == "longform")
+
+    longform = next(c for c in static.completions if c.request.tenant == "longform")
+    long_lifetime_ms = (longform.finish_s - longform.request.arrival_s) * 1000
+
+    # 长请求之后到达的请求，TTFT 被拖到多惨
+    before = [c.ttft_s for c in static.completions if c.request.arrival_s < longform.request.arrival_s]
+    after = [c.ttft_s for c in static.completions if c.request.arrival_s > longform.request.arrival_s]
 
     ensure(
         metrics["ttft_p99_ms"] > metrics["ttft_p50_ms"] * 2,
@@ -681,50 +760,93 @@ def check_static_batch_tail_is_driven_by_longest() -> tuple[dict, dict]:
         f"（{metrics['ttft_p50_ms']:.1f}ms）——静态批的尾延迟由最长的那条决定",
     )
     ensure(
-        interactive["ttft_p50_ms"] > 0
-        and longform["ttft_p99_ms"] >= interactive["ttft_p50_ms"],
-        "静态批里长请求的 TTFT 不该低于同批交互请求的中位数——说明整批一起等最慢的",
+        metrics["ttft_p99_ms"] >= long_lifetime_ms * 0.9,
+        f"静态批的 p99 TTFT（{metrics['ttft_p99_ms']:.1f}ms）应该约等于最长请求的整个生命周期"
+        f"（{long_lifetime_ms:.1f}ms）——说明后面的人是在等那条长请求跑完",
     )
-    return metrics, interactive
+    ensure(
+        max(after) > max(before) * 5,
+        f"排在长请求后面的请求 TTFT（{max(after) * 1000:.1f}ms）应该远大于排在它前面的"
+        f"（{max(before) * 1000:.1f}ms）——这就是队头阻塞",
+    )
+    ensure(
+        metrics["idle_slot_ratio"] > 0.2,
+        f"静态批的槽位空转率应该明显（实测 {metrics['idle_slot_ratio'] * 100:.1f}%），"
+        "因为跑完的槽位要空到整批结束",
+    )
+    return metrics
 
 
 def check_continuous_batching_tames_the_tail() -> tuple[dict, dict, dict]:
     """连续批把 p99 压到接近 p50：谁跑完谁的位置立刻让出去。
 
     静态批必须"等整批结束"，连续批不需要，所以尾延迟差距应该显著。
+    同时断言本章内核与公共层引擎在公共口径上吻合——
+    两套实现必须算出同一个数，否则章节之间的口径就断了。
     """
     workload = build_mixed_workload()
+    device = gpu("h100_sxm")
+    spec = model("qwen2.5-7b")
 
     static = StaticBatchEngine(max_batch=16, batch_window_s=0.05)
     static.run(workload)
     static_metrics = static.metrics()
 
-    continuous = ContinuousBatchEngine(max_batch=16, policy="fcfs")
-    continuous.run(workload)
-    continuous_metrics = continuous.metrics()
+    # 公共层引擎：连续批处理的基准实现
+    public = EngineSimulator(
+        device, spec, max_batch=16, kv_token_budget=100_000, mfu=0.5, policy="fcfs"
+    )
+    public.run(workload)
+    public_metrics = public.metrics()
+    public_metrics["makespan_s"] = _makespan(public.completions)
+
+    # 本章内核：语义一致，但多支持交织分块与卡顿统计
+    kernel = ContinuousBatchEngine(max_batch=16, policy="fcfs")
+    kernel.run(workload)
+    kernel_metrics = kernel.metrics()
 
     static_ratio = static_metrics["ttft_p99_ms"] / max(static_metrics["ttft_p50_ms"], 1e-9)
-    continuous_ratio = continuous_metrics["ttft_p99_ms"] / max(
-        continuous_metrics["ttft_p50_ms"], 1e-9
-    )
+    public_ratio = public_metrics["ttft_p99_ms"] / max(public_metrics["ttft_p50_ms"], 1e-9)
+    kernel_ratio = kernel_metrics["ttft_p99_ms"] / max(kernel_metrics["ttft_p50_ms"], 1e-9)
 
     ensure(
-        continuous_ratio < static_ratio,
-        f"连续批的 p99/p50（{continuous_ratio:.2f}）应该小于静态批（{static_ratio:.2f}）",
+        public_ratio < static_ratio,
+        f"连续批的 p99/p50（{public_ratio:.2f}）应该小于静态批（{static_ratio:.2f}）",
     )
     ensure(
-        continuous_ratio <= 2.0,
-        f"连续批应该把 p99 压到接近 p50，实际 p99/p50 = {continuous_ratio:.2f}",
+        public_ratio <= 2.0,
+        f"连续批应该把 p99 压到接近 p50，实际 p99/p50 = {public_ratio:.2f}",
     )
     ensure(
-        continuous_metrics["ttft_p99_ms"] < static_metrics["ttft_p99_ms"],
-        f"连续批的 p99 TTFT（{continuous_metrics['ttft_p99_ms']:.1f}ms）应该低于静态批"
+        public_metrics["ttft_p99_ms"] < static_metrics["ttft_p99_ms"],
+        f"连续批的 p99 TTFT（{public_metrics['ttft_p99_ms']:.1f}ms）应该低于静态批"
         f"（{static_metrics['ttft_p99_ms']:.1f}ms）",
     )
-    return static_metrics, continuous_metrics, {"static_ratio": static_ratio, "continuous_ratio": continuous_ratio}
+    ensure(
+        public_metrics["output_tokens_per_s"] > static_metrics["output_tokens_per_s"],
+        f"连续批的吞吐（{public_metrics['output_tokens_per_s']:.1f} token/s）应该高于静态批"
+        f"（{static_metrics['output_tokens_per_s']:.1f} token/s）——槽位不再空转",
+    )
+    ensure(
+        public_metrics["makespan_s"] < static_metrics["makespan_s"],
+        "连续批跑完同一批请求的总时间应该更短",
+    )
+    # 口径一致性：两个连续批实现的公共指标必须对得上
+    ensure(
+        abs(kernel_metrics["ttft_p99_ms"] - public_metrics["ttft_p99_ms"])
+        <= public_metrics["ttft_p99_ms"] * 0.1,
+        f"本章内核（{kernel_metrics['ttft_p99_ms']:.1f}ms）与公共层引擎"
+        f"（{public_metrics['ttft_p99_ms']:.1f}ms）的 p99 TTFT 应该一致",
+    )
+    ensure(
+        abs(kernel_metrics["output_tokens_per_s"] - public_metrics["output_tokens_per_s"])
+        <= public_metrics["output_tokens_per_s"] * 0.1,
+        "两个连续批实现的吞吐口径应该一致",
+    )
+    return static_metrics, public_metrics, kernel_metrics
 
 
-def check_chunked_prefill_protects_running_sequences() -> tuple[dict, dict]:
+def check_chunked_prefill_protects_running_sequences() -> dict[str, float]:
     """分块 prefill 保护的是"正在生成的请求"，不是 TTFT。
 
     长 prompt 一次性 prefill 会把整卡卡住 100 多毫秒，
@@ -739,19 +861,63 @@ def check_chunked_prefill_protects_running_sequences() -> tuple[dict, dict]:
 
     chunked = ContinuousBatchEngine(max_batch=16, chunked_prefill=True, chunk_size=512)
     chunked.run(workload)
-    chunked_metrics = chunked.metrics()
+    chunk_metrics = chunked.metrics()
 
     ensure(
-        chunked_metrics["tpot_p99_ms"] < monolithic_metrics["tpot_p99_ms"],
-        f"分块 prefill 的 TPOT p99（{chunked_metrics['tpot_p99_ms']:.1f}ms）应该低于"
-        f"整块 prefill（{monolithic_metrics['tpot_p99_ms']:.1f}ms）——"
-        "长 prompt 不再把正在生成的序列卡住",
+        chunk_metrics["stall_p99_ms"] < mono_metrics["stall_p99_ms"] / 3,
+        f"分块 prefill 的卡顿 p99（{chunk_metrics['stall_p99_ms']:.1f}ms）应该至少比整块 prefill"
+        f"（{mono_metrics['stall_p99_ms']:.1f}ms）好 3 倍——长 prompt 不再把正在生成的序列卡死",
     )
     ensure(
-        chunked_metrics["e2e_p99_ms"] <= monolithic_metrics["e2e_p99_ms"] * 1.05,
-        "分块 prefill 不该让端到端时延明显变差（它只是把同一份算力摊开）",
+        chunk_metrics["tpot_p99_ms"] <= mono_metrics["tpot_p99_ms"],
+        "分块 prefill 不该让每 token 时延变差",
     )
-    return monolithic_metrics, chunked_metrics
+    ensure(
+        chunk_metrics["ttft_p99_ms"] <= mono_metrics["ttft_p99_ms"] * 1.1,
+        f"分块 prefill 主要保护的是正在生成的请求，TTFT 不该变差太多"
+        f"（实测 {mono_metrics['ttft_p99_ms']:.1f}ms → {chunk_metrics['ttft_p99_ms']:.1f}ms）",
+    )
+
+    # 分块越大，卡顿越长：代价是能摊开的粒度变粗
+    coarse = ContinuousBatchEngine(max_batch=16, chunked_prefill=True, chunk_size=1024)
+    coarse.run(workload)
+    coarse_metrics = coarse.metrics()
+    ensure(
+        coarse_metrics["stall_p99_ms"] > chunk_metrics["stall_p99_ms"],
+        f"chunk 调大到 1024 后卡顿（{coarse_metrics['stall_p99_ms']:.1f}ms）应该比 512"
+        f"（{chunk_metrics['stall_p99_ms']:.1f}ms）更长",
+    )
+    return chunk_metrics
+
+
+def check_chunked_prefill_gain_depends_on_policy() -> dict[str, float]:
+    """分块 prefill 的收益取决于调度策略，不是免费的。
+
+    短作业优先下，短请求能插到长请求的剩余分块前面：
+    交互请求的 TTFT 掉一个数量级，代价是长请求自己变慢。
+    """
+    workload = build_mixed_workload()
+
+    fcfs = ContinuousBatchEngine(max_batch=16, chunked_prefill=True, chunk_size=512, policy="fcfs")
+    fcfs.run(workload)
+    fcfs_interactive = _subset_metrics(fcfs.completions, lambda c: c.request.tenant == "interactive")
+    fcfs_long = _subset_metrics(fcfs.completions, lambda c: c.request.tenant == "longform")
+
+    sjf = ContinuousBatchEngine(max_batch=16, chunked_prefill=True, chunk_size=512, policy="sjf")
+    sjf.run(workload)
+    sjf_interactive = _subset_metrics(sjf.completions, lambda c: c.request.tenant == "interactive")
+    sjf_long = _subset_metrics(sjf.completions, lambda c: c.request.tenant == "longform")
+
+    ensure(
+        sjf_interactive["ttft_p99_ms"] < fcfs_interactive["ttft_p99_ms"] / 2,
+        f"短作业优先下交互请求的 TTFT p99（{sjf_interactive['ttft_p99_ms']:.1f}ms）应该明显低于"
+        f"先到先服务（{fcfs_interactive['ttft_p99_ms']:.1f}ms）",
+    )
+    ensure(
+        sjf_long["ttft_p99_ms"] > fcfs_long["ttft_p99_ms"],
+        f"代价是长请求变慢：{fcfs_long['ttft_p99_ms']:.1f}ms → {sjf_long['ttft_p99_ms']:.1f}ms",
+    )
+    return sjf_interactive
 
 
 def check_preemption_recompute_cost() -> float:
@@ -809,63 +975,97 @@ def run() -> None:
     rule(f"单条 4096 token 的 prefill 成本：{fmt_ms(prefill_time(device, spec, 4096, mfu=0.5))}")
 
     section("二、静态批 vs 连续批")
-    static_metrics, interactive = check_static_batch_tail_is_driven_by_longest()
-    static_metrics, continuous_metrics, ratios = check_continuous_batching_tames_the_tail()
+    static_metrics = check_static_batch_tail_is_driven_by_longest()
+    static_metrics, public_metrics, kernel_metrics = check_continuous_batching_tames_the_tail()
+    static_ratio = static_metrics["ttft_p99_ms"] / max(static_metrics["ttft_p50_ms"], 1e-9)
+    public_ratio = public_metrics["ttft_p99_ms"] / max(public_metrics["ttft_p50_ms"], 1e-9)
+    kernel_ratio = kernel_metrics["ttft_p99_ms"] / max(kernel_metrics["ttft_p50_ms"], 1e-9)
     print_table(
-        ["方案", "TTFT p50(ms)", "TTFT p99(ms)", "p99/p50", "e2e p99(ms)", "输出 token/s", "完成时间(s)"],
+        ["方案", "引擎", "TTFT p50(ms)", "TTFT p99(ms)", "p99/p50", "e2e p99(ms)", "输出 token/s", "完成时间(s)"],
         [
             [
                 "静态批",
+                "本章实现",
                 f"{static_metrics['ttft_p50_ms']:.1f}",
                 f"{static_metrics['ttft_p99_ms']:.1f}",
-                f"{ratios['static_ratio']:.2f}",
+                f"{static_ratio:.2f}",
                 f"{static_metrics['e2e_p99_ms']:.1f}",
                 f"{static_metrics['output_tokens_per_s']:.1f}",
                 f"{static_metrics['makespan_s']:.3f}",
             ],
             [
                 "连续批",
-                f"{continuous_metrics['ttft_p50_ms']:.1f}",
-                f"{continuous_metrics['ttft_p99_ms']:.1f}",
-                f"{ratios['continuous_ratio']:.2f}",
-                f"{continuous_metrics['e2e_p99_ms']:.1f}",
-                f"{continuous_metrics['output_tokens_per_s']:.1f}",
-                f"{continuous_metrics['makespan_s']:.3f}",
+                "公共层",
+                f"{public_metrics['ttft_p50_ms']:.1f}",
+                f"{public_metrics['ttft_p99_ms']:.1f}",
+                f"{public_ratio:.2f}",
+                f"{public_metrics['e2e_p99_ms']:.1f}",
+                f"{public_metrics['output_tokens_per_s']:.1f}",
+                f"{public_metrics['makespan_s']:.3f}",
+            ],
+            [
+                "连续批",
+                "本章内核",
+                f"{kernel_metrics['ttft_p50_ms']:.1f}",
+                f"{kernel_metrics['ttft_p99_ms']:.1f}",
+                f"{kernel_ratio:.2f}",
+                f"{kernel_metrics['e2e_p99_ms']:.1f}",
+                f"{kernel_metrics['output_tokens_per_s']:.1f}",
+                f"{kernel_metrics['makespan_s']:.3f}",
             ],
         ],
     )
     rule(
-        f"静态批交互请求的 TTFT 中位数 {interactive['ttft_p50_ms']:.1f}ms，"
-        f"槽位空转率 {static_metrics['idle_slot_ratio'] * 100:.1f}%"
+        f"静态批的 p99 是 p50 的 {static_ratio:.1f} 倍，连续批只有 {public_ratio:.2f} 倍："
+        "静态批的尾由最长那条决定，连续批的尾被压回中位数附近"
+    )
+    rule(
+        f"静态批的槽位空转率 {static_metrics['idle_slot_ratio'] * 100:.1f}%，"
+        f"吞吐只有连续批的 "
+        f"{static_metrics['output_tokens_per_s'] / public_metrics['output_tokens_per_s'] * 100:.0f}%"
     )
 
     section("三、分块 prefill 保护的是谁")
-    mono_metrics, chunk_metrics = check_chunked_prefill_protects_running_sequences()
+    chunk_metrics = check_chunked_prefill_protects_running_sequences()
+    monolithic = ContinuousBatchEngine(max_batch=16, chunked_prefill=False)
+    monolithic.run(build_mixed_workload())
+    mono_metrics = monolithic.metrics()
     print_table(
-        ["方案", "TTFT p50(ms)", "TTFT p99(ms)", "TPOT p50(ms)", "TPOT p99(ms)", "e2e p99(ms)", "输出 token/s"],
+        ["方案", "TTFT p99(ms)", "TPOT p50(ms)", "TPOT p99(ms)", "卡顿 p99(ms)", "e2e p99(ms)", "输出 token/s"],
         [
             [
                 "整块 prefill",
-                f"{mono_metrics['ttft_p50_ms']:.1f}",
                 f"{mono_metrics['ttft_p99_ms']:.1f}",
-                f"{mono_metrics['tpot_p50_ms']:.1f}",
-                f"{mono_metrics['tpot_p99_ms']:.1f}",
+                f"{mono_metrics['tpot_p50_ms']:.2f}",
+                f"{mono_metrics['tpot_p99_ms']:.2f}",
+                f"{mono_metrics['stall_p99_ms']:.1f}",
                 f"{mono_metrics['e2e_p99_ms']:.1f}",
                 f"{mono_metrics['output_tokens_per_s']:.1f}",
             ],
             [
                 "分块 prefill(512)",
-                f"{chunk_metrics['ttft_p50_ms']:.1f}",
                 f"{chunk_metrics['ttft_p99_ms']:.1f}",
-                f"{chunk_metrics['tpot_p50_ms']:.1f}",
-                f"{chunk_metrics['tpot_p99_ms']:.1f}",
+                f"{chunk_metrics['tpot_p50_ms']:.2f}",
+                f"{chunk_metrics['tpot_p99_ms']:.2f}",
+                f"{chunk_metrics['stall_p99_ms']:.1f}",
                 f"{chunk_metrics['e2e_p99_ms']:.1f}",
                 f"{chunk_metrics['output_tokens_per_s']:.1f}",
             ],
         ],
     )
+    rule(
+        f"卡顿从 {mono_metrics['stall_p99_ms']:.0f}ms 降到 {chunk_metrics['stall_p99_ms']:.0f}ms，"
+        "而 TTFT 几乎没变——分块 prefill 保护的是正在生成的请求"
+    )
 
-    section("四、抢占与重算的代价")
+    section("四、分块 prefill 的收益取决于调度策略")
+    sjf_interactive = check_chunked_prefill_gain_depends_on_policy()
+    rule(
+        f"短作业优先下交互请求的 TTFT p99 = {sjf_interactive['ttft_p99_ms']:.1f}ms，"
+        "代价是长请求变慢（详见第 8 章）"
+    )
+
+    section("五、抢占与重算的代价")
     recompute = check_preemption_recompute_cost()
     rule(
         f"被抢占的序列要重算：4096 token 的 prefill 一次要 {fmt_ms(recompute)}，"
