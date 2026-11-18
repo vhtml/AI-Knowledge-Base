@@ -6,7 +6,7 @@
 **怎么学**：先读笔记，再跑对应实验，跑通了再看下一章。
 所有实验离线运行——不联网、不调模型、不需要 GPU、不花 token。
 
-**配套代码**：[`Demos/examples/infra_lab/`](../../../Demos/examples/infra_lab/README.md)
+**配套代码**：[`Demos/examples/infra_lab/`](../../Demos/examples/infra_lab/README.md)
 
 ---
 
