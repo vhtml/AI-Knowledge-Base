@@ -25,7 +25,7 @@ import re
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal, Protocol, runtime_checkable
+from typing import Any, Literal, Protocol, get_type_hints, runtime_checkable
 
 __all__ = [
     "AgentModel",
@@ -265,6 +265,30 @@ def _parse_arg_descriptions(doc: str) -> dict[str, str]:
     return descriptions
 
 
+def _resolve_annotations(func: Callable[..., Any]) -> dict[str, Any]:
+    """把注解解析成真实的类型对象。
+
+    为什么需要这一步：仓库规范要求模块顶部写 ``from __future__ import annotations``，
+    而 PEP 563 会把注解从类型对象压成**字符串**。直接拿字符串查类型表，
+    ``quantity: int`` 会被当成 ``string``——schema 当场对模型说谎。
+
+    先用 ``typing.get_type_hints`` 解析；解析不了（前向引用等）就退回
+    一张常用类型的字符串映射表，保证不会因为一个注解让整个工具挂掉。
+    """
+    raw = dict(getattr(func, "__annotations__", {}))
+    if not raw:
+        return {}
+
+    try:
+        return dict(get_type_hints(func))
+    except Exception:  # noqa: BLE001 - 前向引用解析不了时退回保守映射
+        fallback = {"str": str, "int": int, "float": float, "bool": bool}
+        return {
+            name: fallback.get(value, value) if isinstance(value, str) else value
+            for name, value in raw.items()
+        }
+
+
 def _json_schema_for(func: Callable[..., Any]) -> dict[str, Any]:
     """根据函数签名和类型注解拼一份 JSON Schema。
 
@@ -279,6 +303,7 @@ def _json_schema_for(func: Callable[..., Any]) -> dict[str, Any]:
     signature = inspect.signature(func)
     doc = inspect.getdoc(func) or ""
     arg_docs = _parse_arg_descriptions(doc)
+    annotations = _resolve_annotations(func)
 
     properties: dict[str, Any] = {}
     required: list[str] = []
@@ -288,7 +313,7 @@ def _json_schema_for(func: Callable[..., Any]) -> dict[str, Any]:
             inspect.Parameter.VAR_KEYWORD,
         }:
             continue
-        annotation = param.annotation
+        annotation = annotations.get(name, param.annotation)
         json_type = type_map.get(annotation, "string")
         entry: dict[str, Any] = {"type": json_type}
         if name in arg_docs:
