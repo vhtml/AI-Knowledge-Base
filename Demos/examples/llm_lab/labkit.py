@@ -193,6 +193,9 @@ class ChatResponse:
 
     ``finish_reason`` 是被低估的字段：它决定了"模型是不是还想说但被截断了"
     以及"是不是因为要调工具所以才停"（第 2、4 章会重点用）。
+
+    ``reasoning`` 是推理模型的思考内容——**默认不要回填进上下文**，
+    它既贵又会污染后续判断（第 5 章）。
     """
 
     content: str = ""
@@ -200,6 +203,8 @@ class ChatResponse:
     finish_reason: str = "stop"
     usage: dict[str, int] = field(default_factory=dict)
     model: str = ""
+    reasoning: str = ""
+    """推理模型的思考过程。普通模型为空串。"""
 
 
 @dataclass
@@ -230,8 +235,13 @@ class ModelClient:
         tools: Sequence[ToolSpec] | None = None,
         temperature: float | None = None,
         response_format: dict[str, Any] | None = None,
+        reasoning_effort: str | None = None,
     ) -> ChatResponse:
-        """发一次非流式请求。"""
+        """发一次非流式请求。
+
+        ``reasoning_effort`` 是思考预算（``low`` / ``medium`` / ``high``），
+        只有推理模型认这个参数；普通模型忽略它（第 5 章）。
+        """
         raise NotImplementedError
 
     def stream(
@@ -239,6 +249,7 @@ class ModelClient:
         messages: Sequence[ChatMessage],
         tools: Sequence[ToolSpec] | None = None,
         temperature: float | None = None,
+        reasoning_effort: str | None = None,
     ) -> Iterator[StreamChunk]:
         """发一次流式请求，产出增量分片。"""
         raise NotImplementedError
@@ -276,6 +287,7 @@ class ScriptedClient:
         tools: Sequence[ToolSpec] | None = None,
         temperature: float | None = None,
         response_format: dict[str, Any] | None = None,
+        reasoning_effort: str | None = None,
     ) -> ChatResponse:
         """回放脚本里的下一个响应；脚本用尽后重复最后一条。"""
         if not self.responses:
@@ -287,6 +299,7 @@ class ScriptedClient:
                 "tools": list(tools or []),
                 "temperature": temperature,
                 "response_format": response_format,
+                "reasoning_effort": reasoning_effort,
             }
         )
         index = min(self.cursor, len(self.responses) - 1)
@@ -344,6 +357,7 @@ class OpenAICompatibleClient:
         tools: Sequence[ToolSpec] | None,
         temperature: float | None,
         response_format: dict[str, Any] | None,
+        reasoning_effort: str | None = None,
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "model": self.model,
@@ -356,6 +370,8 @@ class OpenAICompatibleClient:
             payload["tool_choice"] = "auto"
         if response_format is not None:
             payload["response_format"] = response_format
+        if reasoning_effort:
+            payload["reasoning_effort"] = reasoning_effort
         return payload
 
     def complete(
@@ -364,9 +380,10 @@ class OpenAICompatibleClient:
         tools: Sequence[ToolSpec] | None = None,
         temperature: float | None = None,
         response_format: dict[str, Any] | None = None,
+        reasoning_effort: str | None = None,
     ) -> ChatResponse:
         """发一次非流式请求。"""
-        payload = self._payload(messages, tools, temperature, response_format)
+        payload = self._payload(messages, tools, temperature, response_format, reasoning_effort)
         response = self._client.chat.completions.create(**payload)
         choice = response.choices[0]
         raw = choice.message
@@ -377,12 +394,26 @@ class OpenAICompatibleClient:
                 "completion_tokens": response.usage.completion_tokens or 0,
                 "total_tokens": response.usage.total_tokens or 0,
             }
+            details = getattr(response.usage, "completion_tokens_details", None)
+            reasoning_tokens = getattr(details, "reasoning_tokens", None)
+            if reasoning_tokens:
+                # 推理 token 计入输出计费——账单上不会单独列，但成本在里面
+                usage["reasoning_tokens"] = int(reasoning_tokens)
+
+        # 推理模型的思考内容在不同厂商里字段名不一样，都试一遍
+        reasoning = (
+            getattr(raw, "reasoning_content", None)
+            or getattr(raw, "reasoning", None)
+            or ""
+        )
+
         return ChatResponse(
             content=raw.content or "",
             tool_calls=[c.model_dump() if hasattr(c, "model_dump") else dict(c) for c in (getattr(raw, "tool_calls", None) or [])],
             finish_reason=choice.finish_reason or "stop",
             usage=usage,
             model=response.model or self.model,
+            reasoning=str(reasoning),
         )
 
     def stream(
@@ -390,9 +421,10 @@ class OpenAICompatibleClient:
         messages: Sequence[ChatMessage],
         tools: Sequence[ToolSpec] | None = None,
         temperature: float | None = None,
+        reasoning_effort: str | None = None,
     ) -> Iterator[StreamChunk]:
         """发一次流式请求，产出增量分片。"""
-        payload = self._payload(messages, tools, temperature, None)
+        payload = self._payload(messages, tools, temperature, None, reasoning_effort)
         payload["stream"] = True
         payload["stream_options"] = {"include_usage": True}
         stream = self._client.chat.completions.create(**payload)
