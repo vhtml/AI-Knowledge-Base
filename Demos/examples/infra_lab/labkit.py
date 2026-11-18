@@ -122,8 +122,30 @@ def fmt_ms(seconds: float) -> str:
 
 
 def fmt_gib(value: float) -> str:
-    """把字节数格式化成 GiB 字符串。"""
-    return f"{value / BYTES_PER_GIB:.2f}GiB"
+    """把 **GiB 数值**格式化成字符串。
+
+    全课统一：凡是"占多少显存"，一律用 GiB 浮点数表示
+    （见 :func:`kv_gib` / :func:`weight_gib` / :class:`MemoryBudget`），
+    所以这个函数收 GiB，不收字节。
+
+    要格式化字节数用 :func:`fmt_bytes`。
+    """
+    return f"{value:.2f}GiB"
+
+
+def fmt_bytes(value: float) -> str:
+    """把**字节数**格式化成带单位的字符串。
+
+    字节量只在两种地方出现：KV 的每 token 字节数、以及原始字节账。
+    显存"占比"一律走 :func:`fmt_gib`。
+    """
+    if value >= 1024**3:
+        return f"{value / 1024**3:.2f}GiB"
+    if value >= 1024**2:
+        return f"{value / 1024**2:.2f}MiB"
+    if value >= 1024:
+        return f"{value / 1024:.2f}KiB"
+    return f"{value:.0f}B"
 
 
 def table(headers: Sequence[str], rows: Iterable[Sequence[Any]]) -> str:
@@ -663,24 +685,33 @@ def decode_step_time(
 ) -> float:
     """一次 decode 步（batch 内所有序列各出一个 token）的耗时（秒）。
 
-    推理的 decode 阶段是**访存瓶颈**：每个 decode 步都要把整套权重从 HBM 读一遍，
-    算力用不满。所以这里的模型是"读权重 + 读 KV"两个带宽项。
+    两项取**大者**——这是 Roofline 的标准做法，也是 decode 时延的标准模型：
 
-    - 权重读取：整批共享，batch 越大越摊薄
-    - KV 读取：随 batch 和上下文长度线性增长
+    - **访存时间**：读权重（整批共享，batch 越大越摊薄）+ 读 KV
+      （随 batch 和上下文长度线性增长）
+    - **计算时间**：batch × 每 token 的 FLOPs ÷ 峰值算力
 
-    ``mfu`` 是"实际可达带宽占峰值带宽的比例"，工程上单卡批量推理
-    通常在 40%~70% 之间。
+    小 batch 时访存主导——这就是权重摊薄效应；大 batch 时计算追上访存，
+    **这就是 decode 的 batch 上限**：再往上加 batch，只涨时延不涨吞吐。
+
+    ``mfu`` 是"实际可达比例"，工程上单卡批量推理通常在 40%~70% 之间。
     """
     if batch_size <= 0:
         return 0.0
+
+    # 访存项
     weight_bytes = spec.weights_bytes(weight_bits)
     kv_bytes = batch_size * spec.kv_bytes_per_token(2) * max(1, context_tokens)
     total_bytes = weight_bytes + kv_bytes
     effective_bandwidth = device.hbm_bandwidth_gbs * 1e9 * mfu
-    if effective_bandwidth <= 0:
-        return 0.0
-    return total_bytes / effective_bandwidth
+    memory_time = total_bytes / effective_bandwidth if effective_bandwidth > 0 else 0.0
+
+    # 计算项
+    compute_flops = decode_flops(spec, max(1, context_tokens)) * batch_size
+    peak = device.peak_tflops(dtype) * 1e12 * mfu
+    compute_time = compute_flops / peak if peak > 0 else 0.0
+
+    return max(memory_time, compute_time)
 
 
 def prefill_time(
