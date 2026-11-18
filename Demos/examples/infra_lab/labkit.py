@@ -1122,11 +1122,15 @@ class EngineSimulator:
             self._pending.sort(key=lambda r: r.arrival_s)
         return self._pending.pop(0)
 
-    def _kv_used_tokens(self) -> int:
-        """当前运行批占用的 KV token 数。"""
+    def _kv_reserved_tokens(self) -> int:
+        """运行批预留的 KV token 数。
+
+        按「prompt + 预留输出」计，而不是按"当前已生成的 token 数"计——
+        真实引擎也是按 max_tokens 预留，否则一个请求可能在跑到一半时把显存吃穿。
+        """
         total = 0
         for seq in self.running:
-            total += seq["context"] + seq["produced"]
+            total += seq["prompt_tokens"] + seq["max_output_tokens"]
         return total
 
     def _can_admit(self, request: Request) -> bool:
@@ -1134,7 +1138,7 @@ class EngineSimulator:
         if len(self.running) >= self.max_batch:
             return False
         need = request.prompt_tokens + request.max_output_tokens
-        return self._kv_used_tokens() + need <= self.kv_token_budget
+        return self._kv_reserved_tokens() + need <= self.kv_token_budget
 
     # -- 主循环 -----------------------------------------------------------
 
@@ -1143,54 +1147,61 @@ class EngineSimulator:
         self.now = 0.0
         self.running = []
         self.completions = []
-        self._pending = list(requests)
+        self._pending = []
 
-        arrivals = sorted(self._pending, key=lambda r: r.arrival_s)
+        arrivals = sorted(requests, key=lambda r: r.arrival_s)
         index = 0
 
-        while index < len(arrivals) or self._pending or self.running:
-            if self.now > horizon:
-                break
-
-            # 1. 把已经到达的请求放进队列
+        while (index < len(arrivals) or self._pending or self.running) and self.now <= horizon:
+            # 1. 把**已经到达**的请求放进队列。
+            #    注意这里只能放到达的——提前入队会让 TTFT 算成负数。
             while index < len(arrivals) and arrivals[index].arrival_s <= self.now:
                 self._pending.append(arrivals[index])
                 index += 1
 
-            # 2. 引擎空闲且队列有请求 → 做一次 prefill
-            if not self.running and self._pending:
+            # 2. 补位：引擎有空位且 KV 装得下，就 prefill 一个请求。
+            #    这正是连续批处理的核心——不必等整批跑完才接新请求。
+            prefill_s = 0.0
+            if self._pending and len(self.running) < self.max_batch:
                 request = self._select_next()
-                if request is None:
-                    break
-                if not self._can_admit(request):
-                    # 装不下：放回队列，等有序列跑完腾位置
-                    self._pending.insert(0, request)
-                    if not self.running:
-                        # 没有运行中的序列却装不下——只能强行腾挪，放宽限制
+                if request is not None:
+                    if self._can_admit(request):
+                        prefill_s = self._admit(request)
+                    elif not self.running:
+                        # 空转时还装不下 → 说明 KV 预算本身配得太小，放宽到刚好装下
                         self.kv_token_budget = max(
                             self.kv_token_budget,
-                            self._kv_used_tokens() + request.prompt_tokens + request.max_output_tokens,
+                            request.prompt_tokens + request.max_output_tokens,
                         )
-                        continue
-                    break
-                self._admit(request)
-                continue
+                        prefill_s = self._admit(request)
+                    else:
+                        # 装不下就放回队列，等有序列跑完腾出位置
+                        self._pending.insert(0, request)
 
-            if not self.running:
-                # 队列空、运行批空，但还有请求没到达 → 跳到下一个到达时刻
+            # 3. 跑一轮 decode
+            if self.running:
+                decode_s = self._decode_step()
+                # 一个 iteration 内 prefill 与 decode 共享同一套算力，取较大值
+                self.now += max(prefill_s, decode_s)
+                self._settle()
+            elif self._pending:
+                # 装不下但有序列在跑？不可能——running 为空时上面已放宽预算。
+                # 走到这里说明还有请求没到，继续等
+                if index < len(arrivals):
+                    self.now = max(self.now, arrivals[index].arrival_s)
+                continue
+            else:
+                # 引擎空闲、队列空 → 跳到下一个请求到达的时刻
                 if index < len(arrivals):
                     self.now = max(self.now, arrivals[index].arrival_s)
                     continue
                 break
 
-            # 3. 跑一轮 decode
-            self._decode_step()
-
         self.completions.sort(key=lambda c: c.finish_s)
         return self.completions
 
-    def _admit(self, request: Request) -> None:
-        """prefill 一个请求并把它放进运行批。"""
+    def _admit(self, request: Request) -> float:
+        """prefill 一个请求并把它放进运行批，返回本轮 prefill 占用的时间。"""
         enqueue_s = self.now
         if self.chunked_prefill and request.prompt_tokens > self.chunk_size:
             # 分块 prefill：每块单独占一轮引擎时间
@@ -1202,9 +1213,9 @@ class EngineSimulator:
                 mfu=self.mfu,
                 weight_bits=self.weight_bits,
             )
-            self.now += per_chunk * chunks
+            prefill_s = per_chunk * chunks
         else:
-            self.now += prefill_time(
+            prefill_s = prefill_time(
                 self.device,
                 self.spec,
                 request.prompt_tokens,
@@ -1216,14 +1227,17 @@ class EngineSimulator:
             {
                 "request": request,
                 "enqueue_s": enqueue_s,
-                "prefill_end_s": self.now,
+                "prefill_end_s": 0.0,
+                "prompt_tokens": request.prompt_tokens,
+                "max_output_tokens": request.max_output_tokens,
                 "context": request.prompt_tokens,
                 "produced": 0,
             }
         )
+        return prefill_s
 
-    def _decode_step(self) -> None:
-        """跑一轮 decode：每个运行中的序列产出一个 token。"""
+    def _decode_step(self) -> float:
+        """跑一轮 decode：每个运行中的序列产出一个 token，返回本轮耗时。"""
         step_time = 0.0
         for seq in self.running:
             ctx = seq["context"] + seq["produced"]
@@ -1237,14 +1251,19 @@ class EngineSimulator:
             )
             step_time = max(step_time, t)
 
-        self.now += step_time
-
-        finished: list[dict[str, Any]] = []
         for seq in self.running:
             seq["produced"] += 1
-            if seq["produced"] >= seq["request"].output_tokens():
-                finished.append(seq)
+        return step_time
 
+    def _settle(self) -> None:
+        """回填首 token 时刻，并收尾已完成的序列。"""
+        for seq in self.running:
+            if seq["produced"] == 1 and seq["prefill_end_s"] == 0.0:
+                seq["prefill_end_s"] = self.now
+
+        finished = [
+            seq for seq in self.running if seq["produced"] >= seq["request"].output_tokens()
+        ]
         for seq in finished:
             request: Request = seq["request"]
             produced = seq["produced"]
