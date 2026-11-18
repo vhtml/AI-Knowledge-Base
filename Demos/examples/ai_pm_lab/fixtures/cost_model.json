@@ -1,0 +1,80 @@
+{
+  "note": "成本与延迟参数。全部用变量名表达单价，不写具体厂商报价——厂商价格随时会变，写死了这份文档第二天就过期，而且会把「照抄别人的价格」变成默认动作。",
+  "variables": {
+    "p_in": {
+      "value": 0.001,
+      "unit": "元 / 千输入 token",
+      "desc": "输入单价（示意变量，接入真实模型时替换）"
+    },
+    "p_out": {
+      "value": 0.004,
+      "unit": "元 / 千输出 token",
+      "desc": "输出单价（示意变量，接入真实模型时替换）"
+    },
+    "cache_hit_ratio": {
+      "value": 0.4,
+      "unit": "比例 (0–1)",
+      "desc": "输入 token 里命中缓存的比例"
+    },
+    "cache_discount": {
+      "value": 0.5,
+      "unit": "比例 (0–1)",
+      "desc": "命中缓存后实际付费的比例（1 表示完全不打折）"
+    },
+    "input_tokens": {
+      "value": 3000,
+      "unit": "token / 会话",
+      "desc": "单次会话的输入长度（含系统提示、历史与检索片段）"
+    },
+    "output_tokens": {
+      "value": 500,
+      "unit": "token / 会话",
+      "desc": "单次会话的输出长度"
+    },
+    "retrieval_cost": {
+      "value": 0.002,
+      "unit": "元 / 次",
+      "desc": "单次检索调用的成本"
+    },
+    "retrieval_calls": {
+      "value": 2,
+      "unit": "次 / 会话",
+      "desc": "单次会话的检索次数"
+    },
+    "tool_cost": {
+      "value": 0.01,
+      "unit": "元 / 次",
+      "desc": "单次工具调用的成本"
+    },
+    "tool_calls": {
+      "value": 1,
+      "unit": "次 / 会话",
+      "desc": "单次会话的工具调用次数"
+    },
+    "sessions_per_user": {
+      "value": 8,
+      "unit": "次 / 用户 / 月",
+      "desc": "每用户每月平均会话次数"
+    },
+    "price_per_user_month": {
+      "value": 99,
+      "unit": "元 / 用户 / 月",
+      "desc": "每用户每月的订阅收入"
+    },
+    "active_users": {
+      "value": 120,
+      "unit": "人",
+      "desc": "付费用户数（回本周期按整个用户基数算，而不是单用户视角）"
+    },
+    "build_cost": {
+      "value": 120000,
+      "unit": "元",
+      "desc": "一次性建设投入（人力 + 语料 + 标注）"
+    },
+    "support_cost_per_user_month": {
+      "value": 6,
+      "unit": "元 / 用户 / 月",
+      "desc": "分摊到每用户的人工支持成本"
+    }
+  }
+}

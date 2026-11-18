@@ -1,0 +1,96 @@
+{
+  "note": "10 条检索样本。expected 是期望来源，retrieved 是实际检索到的来源，cited 是回答里实际引用的来源，claims 是回答里的事实性断言及其支撑来源。这三项分别对应召回命中率、引用正确率、回答忠实度。",
+  "thresholds": {
+    "recall": 0.8,
+    "citation": 0.9,
+    "faithfulness": 0.8
+  },
+  "cases": [
+    {
+      "id": "RC-01",
+      "query": "退款政策里 7 天无理由的适用范围",
+      "expected": ["S-101"],
+      "retrieved": ["S-101", "S-109"],
+      "cited": ["S-101"],
+      "claims": [{"text": "签收后 7 天内可无理由退货", "supported_by": ["S-101"]}]
+    },
+    {
+      "id": "RC-02",
+      "query": "开票需要哪些信息",
+      "expected": ["S-102"],
+      "retrieved": ["S-102", "S-110"],
+      "cited": ["S-102"],
+      "claims": [{"text": "开票需要抬头与税号", "supported_by": ["S-102"]}]
+    },
+    {
+      "id": "RC-03",
+      "query": "预售商品的发货时间规则",
+      "expected": ["S-103", "S-104"],
+      "retrieved": ["S-103"],
+      "cited": ["S-103"],
+      "claims": [{"text": "预售商品在尾款支付后 7 天内发货", "supported_by": ["S-103"]}]
+    },
+    {
+      "id": "RC-04",
+      "query": "跨境商品的关税由谁承担",
+      "expected": ["S-105"],
+      "retrieved": ["S-107"],
+      "cited": ["S-107"],
+      "claims": [{"text": "跨境商品关税由平台承担", "supported_by": ["S-105"]}]
+    },
+    {
+      "id": "RC-05",
+      "query": "大促期间的物流延迟补偿标准",
+      "expected": ["S-106"],
+      "retrieved": ["S-106", "S-111"],
+      "cited": ["S-106", "S-111"],
+      "claims": [
+        {"text": "延迟超过 3 天按订单金额 5% 补偿", "supported_by": ["S-106"]},
+        {"text": "补偿以优惠券形式发放", "supported_by": ["S-111"]}
+      ]
+    },
+    {
+      "id": "RC-06",
+      "query": "会员升级的等级规则",
+      "expected": ["S-112"],
+      "retrieved": ["S-112"],
+      "cited": ["S-112"],
+      "claims": [{"text": "年度消费满 5000 元升为金卡", "supported_by": ["S-112"]}]
+    },
+    {
+      "id": "RC-07",
+      "query": "企业用户的发票抬头变更流程",
+      "expected": ["S-113"],
+      "retrieved": ["S-113", "S-114"],
+      "cited": [],
+      "claims": [{"text": "抬头变更需上传营业执照并由财务审核", "supported_by": ["S-113"]}]
+    },
+    {
+      "id": "RC-08",
+      "query": "售后维修的寄件费用规则",
+      "expected": ["S-115"],
+      "retrieved": ["S-116"],
+      "cited": ["S-116"],
+      "claims": [{"text": "质量问题寄件费用由平台承担", "supported_by": ["S-115"]}]
+    },
+    {
+      "id": "RC-09",
+      "query": "退货入库的质检标准与退款时效",
+      "expected": ["S-117", "S-118"],
+      "retrieved": ["S-117", "S-118"],
+      "cited": ["S-117"],
+      "claims": [
+        {"text": "质检通过后 24 小时内原路退款", "supported_by": ["S-117"]},
+        {"text": "影响二次销售的商品不予退货", "supported_by": ["S-118"]}
+      ]
+    },
+    {
+      "id": "RC-10",
+      "query": "客服热线与在线客服的服务时间",
+      "expected": ["S-119"],
+      "retrieved": ["S-119"],
+      "cited": ["S-119"],
+      "claims": [{"text": "在线客服 9:00–22:00 在线", "supported_by": ["S-119"]}]
+    }
+  ]
+}

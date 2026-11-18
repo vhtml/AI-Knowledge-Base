@@ -1,0 +1,82 @@
+{
+  "note": "6 条竞品记录，全部为定性字段。本表刻意不含市场份额、融资额、营收等无法核实的数字——竞品地图的作用是定位自己，不是拼报表；写进假数据会让整张图失去可信度。",
+  "axes": {
+    "workflow_depth": {
+      "单点": 0.2,
+      "环节": 0.5,
+      "端到端": 0.85
+    },
+    "automation_level": {
+      "手动": 0.15,
+      "建议": 0.4,
+      "半自动": 0.65,
+      "自动": 0.9
+    }
+  },
+  "axis_labels": {
+    "workflow_depth": "工作流深度",
+    "automation_level": "自动化等级"
+  },
+  "competitors": [
+    {
+      "name": "示例·通用文档问答",
+      "category": "知识问答",
+      "workflow_depth": "单点",
+      "automation_level": "手动",
+      "moat": "检索质量与索引工程",
+      "data_asset": "通用文档索引",
+      "distribution": "通用入口 + 插件市场",
+      "notes": "只解决「问一句答一句」，不碰业务系统；替代成本低，粘性也低"
+    },
+    {
+      "name": "示例·会议纪要助手",
+      "category": "会议纪要",
+      "workflow_depth": "单点",
+      "automation_level": "建议",
+      "moat": "转写质量与说话人分离",
+      "data_asset": "会议语料",
+      "distribution": "会议工具插件",
+      "notes": "给出建议但不改任务系统，闭环断在最后一步"
+    },
+    {
+      "name": "示例·工单分类插件",
+      "category": "客服插件",
+      "workflow_depth": "单点",
+      "automation_level": "半自动",
+      "moat": "标注数据与规则沉淀",
+      "data_asset": "工单标签体系",
+      "distribution": "客服系统集成",
+      "notes": "直接改工单状态，自动化程度高于前两者，但仍是单点能力"
+    },
+    {
+      "name": "示例·合同审阅工作台",
+      "category": "文档审阅",
+      "workflow_depth": "环节",
+      "automation_level": "建议",
+      "moat": "条款库与行业模板",
+      "data_asset": "条款标注语料",
+      "distribution": "法务部门直销",
+      "notes": "覆盖审阅到修改的多个环节，但动作仍需人工确认"
+    },
+    {
+      "name": "示例·端到端客服代理",
+      "category": "客服代理",
+      "workflow_depth": "端到端",
+      "automation_level": "自动",
+      "moat": "闭环数据与系统集成",
+      "data_asset": "全量会话与工单",
+      "distribution": "客服平台内嵌",
+      "notes": "从接入到关单全自动；护栏做得细，误操作有回滚"
+    },
+    {
+      "name": "示例·运维事件自动化",
+      "category": "运维自动化",
+      "workflow_depth": "端到端",
+      "automation_level": "半自动",
+      "moat": "故障知识图谱与变更审批流",
+      "data_asset": "历史故障与处置记录",
+      "distribution": "私有化部署",
+      "notes": "流程覆盖全，但高危动作仍留人工闸门——端到端不等于全自动"
+    }
+  ]
+}
