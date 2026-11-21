@@ -148,21 +148,56 @@ def fmt_bytes(value: float) -> str:
     return f"{value:.0f}B"
 
 
+def _display_width(text: str) -> int:
+    """算字符串在终端里的显示宽度。
+
+    中日韩字符占**两列**，英文占一列。按字符数对齐的话，
+    表格里只要有中文就会歪。这不是美观问题——歪了的表格会让人
+    看错数字和列的对应关系。
+    """
+    width = 0
+    for char in text:
+        code = ord(char)
+        if (
+            0x1100 <= code <= 0x115F
+            or 0x2E80 <= code <= 0xA4CF
+            or 0xAC00 <= code <= 0xD7A3
+            or 0xF900 <= code <= 0xFAFF
+            or 0xFE30 <= code <= 0xFE6F
+            or 0xFF00 <= code <= 0xFF60
+            or 0xFFE0 <= code <= 0xFFE6
+            or 0x20000 <= code <= 0x3FFFD
+        ):
+            width += 2
+        else:
+            width += 1
+    return width
+
+
+def _pad(text: str, width: int) -> str:
+    """按显示宽度右侧补空格。"""
+    return text + " " * max(0, width - _display_width(text))
+
+
 def table(headers: Sequence[str], rows: Iterable[Sequence[Any]]) -> str:
     """把表头和行渲染成对齐的等宽表格文本。"""
     headers = [str(h) for h in headers]
     body = [[str(c) for c in row] for row in rows]
-    widths = [len(h) for h in headers]
+    widths = [_display_width(h) for h in headers]
     for row in body:
         for index, cell in enumerate(row):
             if index < len(widths):
-                widths[index] = max(widths[index], len(cell))
+                widths[index] = max(widths[index], _display_width(cell))
     lines = [
-        "  " + " | ".join(h.ljust(widths[i]) for i, h in enumerate(headers)),
+        "  " + " | ".join(_pad(h, widths[i]) for i, h in enumerate(headers)),
         "  " + "-+-".join("-" * w for w in widths),
     ]
     for row in body:
-        lines.append("  " + " | ".join(c.ljust(widths[i]) for i, c in enumerate(row)))
+        lines.append(
+            "  " + " | ".join(
+                _pad(c, widths[i]) if i < len(widths) else c for i, c in enumerate(row)
+            )
+        )
     return "\n".join(lines)
 
 
