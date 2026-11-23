@@ -77,7 +77,7 @@ vibe_film_lab/
 │   ├── storyboard.json  分镜表
 │   └── worlds.json      两套外观的规格
 └── capstone/
-    └── fourier_C/       毕业作品：一条 27 秒的完整短片
+    └── fourier_C/       毕业作品：一条 30 秒的完整短片
         ├── index.html
         ├── film.js      全部画面（字幕、七个场景、片名卡、渲染引擎）
         ├── storyboard.md 分镜表 + 事实表 + 时间轴
