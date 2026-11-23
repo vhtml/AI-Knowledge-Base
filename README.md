@@ -14,11 +14,11 @@
 
 | 目录 | 放什么 | 现状 |
 | --- | --- | --- |
-| `AI/` | AI 领域笔记：Agent / LLM / MCP / Prompt / RAG / Skill / 产品经理 等 | `Agent/` `LLM/` `Skill/` `LangGraph/` `AI-Product/` 各有一套完整教程，其余待填 |
+| `AI/` | AI 领域笔记：Agent / LLM / MCP / Prompt / RAG / Skill / 产品经理 / Infra 等 | `Agent/` `LLM/` `Skill/` `LangGraph/` `AI-Product/` `AI-Infra/` 各有一套完整教程，其余待填 |
 | `Business/` | 商业知识：Growth / Marketing / Pricing / SaaS / Sales | 骨架 |
 | `Finance/` | 金融知识：Macro / Equity / Portfolio / Valuation | 骨架 |
 | `Projects/` | 独立项目工作区，一个项目一个子目录 | 骨架 |
-| `Demos/` | **唯一的代码区**：Python 依赖、`.env`、`.venv` 都在这一层 | `examples/` 13 个示例 + `langgraph-demo/` |
+| `Demos/` | **唯一的代码区**：Python 依赖、`.env`、`.venv` 都在这一层 | `examples/` 12 个示例 + `langgraph-demo/` |
 | `docs/` | 方案与计划文档 | `superpowers/plans/` |
 
 `AI/` `Business/` `Finance/` `Projects/` 下每个分类目录都带 `.gitkeep`——
@@ -33,6 +33,8 @@
 | `Demos/examples/agent_lab/` | **Agent 开发教程实验（17 章）** | 框架无关：手写 ReAct、工具设计、上下文预算、记忆、审批、评测 | `python -m agent_lab.selftest` |
 | `Demos/examples/agent_lab/capstone/` | Agent 开发**毕业作品** | 把 17 章的护栏装进一个可运行的运行时 | `python -m agent_lab.capstone.selftest` |
 | `Demos/examples/llm_lab/` | **LLM 地基教程实验（8 章）** | 贴着协议：消息、工具调用协议、结构化输出、流式、定价缓存 | `python -m llm_lab.selftest` |
+| `Demos/examples/infra_lab/` | **AI Infra 推理服务教程实验（18 章）** | 显存账、Roofline、KV cache、连续批处理、量化、调度、容量规划 | `python -m infra_lab.selftest` |
+| `Demos/examples/infra_lab/capstone/` | AI Infra **毕业作品** | 迷你推理服务：分页 KV + 连续批处理 + 前缀缓存 + 亲和路由 | `python -m infra_lab.capstone.selftest` |
 | `Demos/examples/langgraph_lab/` | **LangGraph 深度教程实验（17 章）** | 状态图、归约器、HITL、持久化、流式、中间件、MCP | `python -m langgraph_lab.selftest` |
 | `Demos/examples/chat_cli/` | 命令行聊天助手 | 多轮对话、流式输出、历史存档、**上下文压缩** | `python -m chat_cli.selftest` |
 | `Demos/examples/rag-demo/` | 检索问答（FastAPI + Vue 3） | 分块、检索、**GOLD 黄金集评估** | `python -m backend.rag eval`（需联网） |
@@ -99,6 +101,19 @@ uv run --project .. python -m ai_pm_lab week3       # 只跑第 3 周
 uv run --project .. python -m ai_pm_lab selftest    # 自检
 ```
 
+### 跑 AI Infra 推理服务教程实验
+
+```bash
+cd Demos/examples
+uv run --project .. python -m infra_lab list        # 列出 18 章
+uv run --project .. python -m infra_lab ch07        # 跑第 7 章
+uv run --project .. python -m infra_lab all         # 跑全部 18 章
+uv run --project .. python -m infra_lab capstone     # 跑毕业作品
+uv run --project .. python -m infra_lab.selftest    # 全量自检
+```
+
+全部离线运行：不联网、不消耗 token、不需要 GPU。跑挂了就是没学会。
+
 ### 跑各示例的自检
 
 自检大多不联网，但依赖在 `Demos/` 这一层，用裸 `python3` 会缺包：
@@ -107,6 +122,7 @@ uv run --project .. python -m ai_pm_lab selftest    # 自检
 cd Demos/examples
 uv run --project .. python -m agent_lab.selftest
 uv run --project .. python -m llm_lab.selftest
+uv run --project .. python -m infra_lab.selftest
 uv run --project .. python -m chat_cli.selftest
 uv run --project .. python -m life_assistant.selftest
 uv run --project .. python -m study_planner.backend.selftest
@@ -116,6 +132,7 @@ uv run --project .. python -m ai_pm_lab selftest
 
 # 毕业作品自检
 uv run --project .. python -m agent_lab.capstone.selftest
+uv run --project .. python -m infra_lab.capstone.selftest
 
 # rag-demo 的检索评估需要联网调 embedding，跑在它自己的目录下
 cd Demos/examples/rag-demo && uv run --project ../.. python -m backend.rag eval
@@ -149,12 +166,14 @@ cd Demos/examples/rag-demo && uv run --project ../.. python -m backend.rag eval
 
 - 想学 **Agent 开发（从零手写，不依赖框架）** → [`AI/Agent/`](AI/Agent/README.md)，配 `Demos/examples/agent_lab/`
 - 想补 **模型 API 地基** → [`AI/LLM/`](AI/LLM/README.md)，配 `Demos/examples/llm_lab/`
+- 想学 **AI Infra 推理服务**（显存账、KV cache、连续批处理、量化、调度、容量规划）→ [`AI/AI-Infra/`](AI/AI-Infra/README.md)，配 `Demos/examples/infra_lab/`
 - 想学 **AI 产品经理** → [`AI/AI-Product/`](AI/AI-Product/README.md)，配 `Demos/examples/ai_pm_lab/`
 - 想学 **Skill 怎么写** → [`AI/Skill/`](AI/Skill/README.md)，配 `Demos/examples/skill_lab/`
 - 想学 **LangGraph 及其生态** → [`AI/LangGraph/`](AI/LangGraph/README.md)，配 `Demos/examples/langgraph_lab/`
 - 想看**上下文怎么管** → `Demos/examples/chat_cli/README.md` 的上下文管理章节
 - 想看**检索质量怎么评** → `Demos/examples/rag-demo/backend/rag.py` 的 `GOLD` 集
 - 想看**记忆怎么分层** → `Demos/examples/study_planner/backend/memory*.py`
+- 想看**推理服务怎么调度** → `Demos/examples/infra_lab/capstone/miniserve.py` 的连续批处理循环
 
 ### 推荐的学法
 
@@ -169,3 +188,7 @@ AI/Skill/（封装成技能包，7 章）
 ```
 
 这个顺序的好处是：你看 LangGraph 时，看到的每一样东西都认识。
+
+**AI Infra 是另一条线**：`AI/AI-Infra/` 讲的是"怎么把模型高效地服务出去"，
+18 章可以独立学完，不依赖上面三层（只需要 Transformer 的基本结构和 KV cache 的来历，第 5 章会重新讲一遍）；
+但要搞懂容量规划，最好先知道模型协议和 Agent 的请求形态。
