@@ -275,12 +275,18 @@ def subtitle_timeline(
     *,
     gap: float = 0.15,
     lead_in: float = 0.0,
+    respect_explicit: bool = True,
 ) -> list[SubCue]:
     """把字幕稿排成时间轴。
 
     每条字幕的停留时间由它的**字数**决定：中文按每字 0.22 秒，
     再加一个下限（太短的句子读起来赶）和上限（太长的句子屏幕塞不下）。
     句与句之间留 ``gap`` 秒呼吸——无人声的片子全靠这个空隙制造节奏。
+
+    ``respect_explicit`` 为真时，字幕稿里显式写了 ``t`` 的条目**用它自己的
+    起始时间**（手工排过的片子必须这样，否则算出来的时间轴和成片对不上）。
+    没写 ``t`` 的条目接在上一条之后——这是"自动排版"模式，
+    写完稿子不用管时间轴，让它自己排。
 
     返回的 :class:`SubCue` 按开始时间单调不减。
     """
@@ -292,16 +298,18 @@ def subtitle_timeline(
         hold = cue.get("hold")
         if hold is None:
             hold = max(1.8, min(5.0, len(plain) * 0.22))
+        explicit = cue.get("t")
+        start = float(explicit) if (respect_explicit and explicit is not None) else cursor
         timeline.append(
             SubCue(
                 index=index,
-                start=round(cursor, 3),
-                end=round(cursor + hold, 3),
+                start=round(start, 3),
+                end=round(start + hold, 3),
                 text=plain,
                 colored=colors,
             )
         )
-        cursor += hold + gap
+        cursor = start + hold + gap
     return timeline
 
 

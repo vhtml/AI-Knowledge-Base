@@ -86,7 +86,7 @@ uv run --project .. python -m vibe_film_lab.selftest
 - [ ] 成片规格是 1920×1080、30fps，帧数 = 时长 × 帧率
 
 毕业作品就是 `Demos/examples/vibe_film_lab/capstone/fourier_C/`——
-一条讲傅里叶变换直觉的 28 秒短片，从分镜表到 MP4 全套齐活。
+一条讲傅里叶变换直觉的 30 秒短片，从分镜表到 MP4 全套齐活。
 
 ---
 

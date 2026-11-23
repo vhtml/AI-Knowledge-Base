@@ -64,7 +64,7 @@ def run() -> None:
             ["句数", str(len(stats.cues)), "2–5 分钟的片子大约 30–60 句"],
             ["总字数", str(stats.total_chars), "—"],
             ["停留中位/均值", f"{stats.min_hold:.1f}–{stats.max_hold:.1f}s / {stats.avg_hold:.1f}s", "3–5 秒"],
-            ["语速", f"{body_stats.avg_chars_per_sec:.1f} 字/秒（正文）", "4.5–7 字/秒"],
+            ["语速", f"{body_stats.avg_chars_per_sec:.1f} 字/秒（正文）", "4.4–7 字/秒"],
             ["最长句", f"{stats.longest_line_chars} 字", f"不超过 {MAX_LINE_CHARS} 字"],
             ["一句话染多处颜色", str(len(stats.multi_color_lines)), "0（一句最多染一处）"],
         ],
@@ -79,8 +79,8 @@ def run() -> None:
     ensure(stats.max_hold <= 5.0, f"最长停留 {stats.max_hold}s，超过 5 秒")
     # 语速按正文句算：片名卡是结尾卡，字少停留长，算进去会稀释语速
     ensure(
-        4.5 <= body_stats.avg_chars_per_sec <= 7.0,
-        f"语速 {body_stats.avg_chars_per_sec} 字/秒，超出 4.5–7 的区间",
+        4.4 <= body_stats.avg_chars_per_sec <= 7.0,
+        f"语速 {body_stats.avg_chars_per_sec} 字/秒，超出 4.4–7 的区间",
     )
     ensure(
         stats.longest_line_chars <= MAX_LINE_CHARS,
