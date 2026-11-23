@@ -18,7 +18,7 @@
 | `Business/` | 商业知识：Growth / Marketing / Pricing / SaaS / Sales | 骨架 |
 | `Finance/` | 金融知识：Macro / Equity / Portfolio / Valuation | 骨架 |
 | `Projects/` | 独立项目工作区，一个项目一个子目录 | 骨架 |
-| `Demos/` | **唯一的代码区**：Python 依赖、`.env`、`.venv` 都在这一层 | `examples/` 12 个示例 + `langgraph-demo/` |
+| `Demos/` | **唯一的代码区**：Python 依赖、`.env`、`.venv` 都在这一层 | `examples/` 13 个示例 + `langgraph-demo/` |
 | `docs/` | 方案与计划文档 | `superpowers/plans/` |
 
 `AI/` `Business/` `Finance/` `Projects/` 下每个分类目录都带 `.gitkeep`——
