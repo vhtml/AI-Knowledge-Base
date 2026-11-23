@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Vibe 知识短片 · 渲染页</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #080c18; overflow: hidden; }
+  /* 画布按视口等比缩放：1920×1080 的画布在 320×180 的窗口里也能看全，
+     方便用小尺寸做快速自检，不必每次都渲全尺寸。 */
+  canvas { display: block; width: 100vw; height: auto; }
+</style>
+</head>
+<body>
+<canvas id="stage"></canvas>
+<script src="film.js"></script>
+<script>
+  /* 渲染页只做一件事：把 URL 上的 t 交给 seek(t)。
+   * 画面内容全部由 film.js 决定——这样"预览看到的"和"渲出来的"
+   * 一定一致，因为它们走的是同一条代码路径。 */
+  (function () {
+    const params = new URLSearchParams(location.search);
+    const t = parseFloat(params.get('t') || '0');
+    const canvas = document.getElementById('stage');
+    canvas.width = CONFIG.W;
+    canvas.height = CONFIG.H;
+    const ctx = canvas.getContext('2d');
+    seek(ctx, t);
+  })();
+</script>
+</body>
+</html>

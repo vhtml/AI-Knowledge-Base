@@ -14,7 +14,7 @@
 
 | 目录 | 放什么 | 现状 |
 | --- | --- | --- |
-| `AI/` | AI 领域笔记：Agent / LLM / MCP / Prompt / RAG / Skill / 产品经理 / Infra 等 | `Agent/` `LLM/` `Skill/` `LangGraph/` `AI-Product/` `AI-Infra/` 各有一套完整教程，其余待填 |
+| `AI/` | AI 领域笔记：Agent / LLM / MCP / Prompt / RAG / Skill / 产品经理 / Infra / 知识动画 等 | `Agent/` `LLM/` `Skill/` `LangGraph/` `AI-Product/` `AI-Infra/` `Knowledge-Film/` 各有一套完整教程，其余待填 |
 | `Business/` | 商业知识：Growth / Marketing / Pricing / SaaS / Sales | 骨架 |
 | `Finance/` | 金融知识：Macro / Equity / Portfolio / Valuation | 骨架 |
 | `Projects/` | 独立项目工作区，一个项目一个子目录 | 骨架 |
@@ -41,6 +41,7 @@
 | `Demos/examples/study_planner/` | 学习规划师（SSE 流式 + 记忆系统） | 对话流、目标与待办、**记忆分层与检索** | `python -m study_planner.backend.selftest` |
 | `Demos/examples/life_assistant/` | 三工具 Agent | **工具选择**与**参数校验** | `python -m life_assistant.selftest` |
 | `Demos/examples/skill_lab/` | Skill 制作七天教程 | 7 个可运行实验 + 校验脚本 + 毕业作品 | `python -m skill_lab.selftest` |
+| `Demos/examples/vibe_film_lab/` | **Vibe 知识动画教程实验（12 章）** | 形象/事实/分镜三件套 + 纯函数渲染管线 + 毕业成片 | `python -m vibe_film_lab.selftest` |
 | `Demos/examples/ai_pm_lab/` | **AI 产品经理八周教程实验（16 章）** | 场景打分、评测门禁、单位经济、风险登记册 | `python -m ai_pm_lab selftest` |
 | `Demos/examples/skills/` | 最小 skill 样例 | 一个 SKILL.md 长什么样 | — |
 | `Demos/examples/retry-demo/` | 重试与熔断 | 指数退避、熔断器 | — |
@@ -114,6 +115,22 @@ uv run --project .. python -m infra_lab.selftest    # 全量自检
 
 全部离线运行：不联网、不消耗 token、不需要 GPU。跑挂了就是没学会。
 
+### 跑 Vibe 知识动画教程实验
+
+```bash
+cd Demos/examples
+
+uv run --project .. python -m vibe_film_lab all        # 12 章全跑
+uv run --project .. python -m vibe_film_lab ch07       # 只跑第 7 章
+uv run --project .. python -m vibe_film_lab.selftest   # 自检
+
+# 渲毕业作品《把复杂拆成简单》（需要本机装了 Chrome 和 ffmpeg）
+uv run --project .. python -m vibe_film_lab.engine.render \
+    vibe_film_lab/capstone/fourier_C --jobs 4
+```
+
+除了渲染那几章，实验离线运行；渲染那几章缺 Chrome/ffmpeg 时会打印"跳过"并继续。
+
 ### 跑各示例的自检
 
 自检大多不联网，但依赖在 `Demos/` 这一层，用裸 `python3` 会缺包：
@@ -129,6 +146,7 @@ uv run --project .. python -m study_planner.backend.selftest
 uv run --project .. python -m skill_lab.selftest
 uv run --project .. python -m langgraph_lab.selftest
 uv run --project .. python -m ai_pm_lab selftest
+uv run --project .. python -m vibe_film_lab.selftest
 
 # 毕业作品自检
 uv run --project .. python -m agent_lab.capstone.selftest
@@ -170,6 +188,7 @@ cd Demos/examples/rag-demo && uv run --project ../.. python -m backend.rag eval
 - 想学 **AI 产品经理** → [`AI/AI-Product/`](AI/AI-Product/README.md)，配 `Demos/examples/ai_pm_lab/`
 - 想学 **Skill 怎么写** → [`AI/Skill/`](AI/Skill/README.md)，配 `Demos/examples/skill_lab/`
 - 想学 **LangGraph 及其生态** → [`AI/LangGraph/`](AI/LangGraph/README.md)，配 `Demos/examples/langgraph_lab/`
+- 想学**知识动画（Vibe 知识）怎么从稿子做到成片** → [`AI/Knowledge-Film/`](AI/Knowledge-Film/README.md)，配 `Demos/examples/vibe_film_lab/`
 - 想看**上下文怎么管** → `Demos/examples/chat_cli/README.md` 的上下文管理章节
 - 想看**检索质量怎么评** → `Demos/examples/rag-demo/backend/rag.py` 的 `GOLD` 集
 - 想看**记忆怎么分层** → `Demos/examples/study_planner/backend/memory*.py`
