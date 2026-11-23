@@ -14,11 +14,11 @@
 
 | 目录 | 放什么 | 现状 |
 | --- | --- | --- |
-| `AI/` | AI 领域笔记：Agent / LLM / MCP / Prompt / RAG / Skill / 产品经理 等 | `Skill/` `LangGraph/` `AI-Product/` 各有一套完整笔记，其余待填 |
+| `AI/` | AI 领域笔记：Agent / LLM / MCP / Prompt / RAG / Skill / 产品经理 等 | `Agent/` `LLM/` `Skill/` `LangGraph/` `AI-Product/` 各有一套完整教程，其余待填 |
 | `Business/` | 商业知识：Growth / Marketing / Pricing / SaaS / Sales | 骨架 |
 | `Finance/` | 金融知识：Macro / Equity / Portfolio / Valuation | 骨架 |
 | `Projects/` | 独立项目工作区，一个项目一个子目录 | 骨架 |
-| `Demos/` | **唯一的代码区**：Python 依赖、`.env`、`.venv` 都在这一层 | `examples/` 9 个示例 + `langgraph-demo/` |
+| `Demos/` | **唯一的代码区**：Python 依赖、`.env`、`.venv` 都在这一层 | `examples/` 13 个示例 + `langgraph-demo/` |
 | `docs/` | 方案与计划文档 | `superpowers/plans/` |
 
 `AI/` `Business/` `Finance/` `Projects/` 下每个分类目录都带 `.gitkeep`——
@@ -30,6 +30,9 @@
 
 | 示例 | 一句话 | 看点 | 自检 |
 | --- | --- | --- | --- |
+| `Demos/examples/agent_lab/` | **Agent 开发教程实验（17 章）** | 框架无关：手写 ReAct、工具设计、上下文预算、记忆、审批、评测 | `python -m agent_lab.selftest` |
+| `Demos/examples/agent_lab/capstone/` | Agent 开发**毕业作品** | 把 17 章的护栏装进一个可运行的运行时 | `python -m agent_lab.capstone.selftest` |
+| `Demos/examples/llm_lab/` | **LLM 地基教程实验（8 章）** | 贴着协议：消息、工具调用协议、结构化输出、流式、定价缓存 | `python -m llm_lab.selftest` |
 | `Demos/examples/langgraph_lab/` | **LangGraph 深度教程实验（17 章）** | 状态图、归约器、HITL、持久化、流式、中间件、MCP | `python -m langgraph_lab.selftest` |
 | `Demos/examples/chat_cli/` | 命令行聊天助手 | 多轮对话、流式输出、历史存档、**上下文压缩** | `python -m chat_cli.selftest` |
 | `Demos/examples/rag-demo/` | 检索问答（FastAPI + Vue 3） | 分块、检索、**GOLD 黄金集评估** | `python -m backend.rag eval`（需联网） |
@@ -102,12 +105,17 @@ uv run --project .. python -m ai_pm_lab selftest    # 自检
 
 ```bash
 cd Demos/examples
+uv run --project .. python -m agent_lab.selftest
+uv run --project .. python -m llm_lab.selftest
 uv run --project .. python -m chat_cli.selftest
 uv run --project .. python -m life_assistant.selftest
 uv run --project .. python -m study_planner.backend.selftest
 uv run --project .. python -m skill_lab.selftest
 uv run --project .. python -m langgraph_lab.selftest
 uv run --project .. python -m ai_pm_lab selftest
+
+# 毕业作品自检
+uv run --project .. python -m agent_lab.capstone.selftest
 
 # rag-demo 的检索评估需要联网调 embedding，跑在它自己的目录下
 cd Demos/examples/rag-demo && uv run --project ../.. python -m backend.rag eval
@@ -139,9 +147,25 @@ cd Demos/examples/rag-demo && uv run --project ../.. python -m backend.rag eval
 
 ## 看哪里
 
+- 想学 **Agent 开发（从零手写，不依赖框架）** → [`AI/Agent/`](AI/Agent/README.md)，配 `Demos/examples/agent_lab/`
+- 想补 **模型 API 地基** → [`AI/LLM/`](AI/LLM/README.md)，配 `Demos/examples/llm_lab/`
 - 想学 **AI 产品经理** → [`AI/AI-Product/`](AI/AI-Product/README.md)，配 `Demos/examples/ai_pm_lab/`
 - 想学 **Skill 怎么写** → [`AI/Skill/`](AI/Skill/README.md)，配 `Demos/examples/skill_lab/`
 - 想学 **LangGraph 及其生态** → [`AI/LangGraph/`](AI/LangGraph/README.md)，配 `Demos/examples/langgraph_lab/`
 - 想看**上下文怎么管** → `Demos/examples/chat_cli/README.md` 的上下文管理章节
 - 想看**检索质量怎么评** → `Demos/examples/rag-demo/backend/rag.py` 的 `GOLD` 集
 - 想看**记忆怎么分层** → `Demos/examples/study_planner/backend/memory*.py`
+
+### 推荐的学法
+
+```
+AI/LLM/（地基，8 章）
+      ↓
+AI/Agent/（手写运行时，17 章）
+      ↓
+AI/LangGraph/（框架层，17 章）
+      ↓
+AI/Skill/（封装成技能包，7 章）
+```
+
+这个顺序的好处是：你看 LangGraph 时，看到的每一样东西都认识。
