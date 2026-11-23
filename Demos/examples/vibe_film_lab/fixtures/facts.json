@@ -1,0 +1,47 @@
+{
+  "_note": "样片《把复杂拆成简单》的事实表。每条事实要么上屏、要么标成示意；片尾要印的文献也在这里登记。",
+  "thesis": "任何复杂的信号都可以拆成一批简单的正弦波叠加——这不是巧合，是一条可以证明的定理。",
+  "title": "把复杂拆成简单",
+  "topic": "傅里叶变换的直觉",
+  "facts": [
+    {
+      "key": "提出年份",
+      "value": "1822",
+      "source": "Fourier, Théorie analytique de la chaleur（热传导理论），1822 年出版",
+      "illustrative": false,
+      "on_screen": true
+    },
+    {
+      "key": "最低音示例",
+      "value": "220",
+      "source": "示意：标准钢琴 A4 为 440 Hz，此处取其下方八度",
+      "illustrative": true,
+      "on_screen": true
+    },
+    {
+      "key": "中间音示例",
+      "value": "550",
+      "source": "示意：用于说明音高与频率的对应关系，非真实测量",
+      "illustrative": true,
+      "on_screen": true
+    },
+    {
+      "key": "最高音示例",
+      "value": "1210",
+      "source": "示意：用于说明音高与频率的对应关系，非真实测量",
+      "illustrative": true,
+      "on_screen": true
+    },
+    {
+      "key": "正弦波叠加定理",
+      "value": "任何周期信号",
+      "source": "傅里叶级数：周期信号可展开为正弦波之和（Dirichlet 条件成立时逐点收敛）",
+      "illustrative": false,
+      "on_screen": false
+    }
+  ],
+  "references": [
+    "Fourier, J. (1822). Théorie analytique de la chaleur.",
+    "公开科普短片《何时该停下》《从噪声到世界》的分镜表可作对照学习"
+  ]
+}
