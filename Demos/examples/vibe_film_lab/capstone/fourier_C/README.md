@@ -36,6 +36,10 @@ uv run --project .. python -m vibe_film_lab.engine.render \
 # 渲全片
 uv run --project .. python -m vibe_film_lab.engine.render \
     vibe_film_lab/capstone/fourier_C --jobs 4
+
+# 续渲：只补缺的那几帧（帧号连续，不用从头再来）
+uv run --project .. python -m vibe_film_lab.engine.render \
+    vibe_film_lab/capstone/fourier_C --frames 756 758
 ```
 
 产物在 `vibe_film_lab/capstone/fourier_C/out/`：`film.mp4`（成片）、`sheet.jpg`（联络表）、

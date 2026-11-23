@@ -28,7 +28,9 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -103,44 +105,70 @@ def screenshot(
     out_png: Path,
     width: int,
     height: int,
+    timeout: float = 90.0,
 ) -> Path:
     """截一帧。
 
     ``--virtual-time-budget`` 让 Chrome 把页面里的 JS 跑完再截图，
     不加这个参数会截到一张白纸——这是最常见的"为什么渲出来是空白"。
+
+    ``timeout`` 是防挂死的兜底：Chrome 偶尔会卡住不退出（尤其是并发时），
+    没有超时的话整个渲染会永远停在这一帧上。超时会连同它拉起的
+    浏览器子进程一起杀掉（单独开进程组，否则子进程会变孤儿）。
     """
     out_png.parent.mkdir(parents=True, exist_ok=True)
     url = html.resolve().as_uri() + f"?t={t:.6f}"
-    _run(
-        [
-            chrome,
-            "--headless=new",
-            "--disable-gpu",
-            "--hide-scrollbars",
-            "--force-device-scale-factor=1",
-            "--default-background-color=00000000",
-            "--disable-extensions",
-            "--mute-audio",
-            # 关掉一切后台网络行为：Chrome 会尝试连组件更新、变体种子等
-            # 服务，在网络不稳的机器上会拖慢甚至卡死整帧渲染。
-            "--disable-background-networking",
-            "--disable-component-update",
-            "--disable-sync",
-            "--no-first-run",
-            "--no-default-browser-check",
-            "--disable-backgrounding-occluded-windows",
-            "--disable-renderer-backgrounding",
-            "--password-store=basic",
-            "--use-mock-keychain",
-            f"--window-size={width},{height}",
-            "--virtual-time-budget=3000",
-            f"--screenshot={out_png}",
-            url,
-        ]
+    cmd = [
+        chrome,
+        "--headless=new",
+        "--disable-gpu",
+        "--hide-scrollbars",
+        "--force-device-scale-factor=1",
+        "--default-background-color=00000000",
+        "--disable-extensions",
+        "--mute-audio",
+        # 关掉一切后台网络行为：Chrome 会尝试连组件更新、变体种子等
+        # 服务，在网络不稳的机器上会拖慢甚至卡死整帧渲染。
+        "--disable-background-networking",
+        "--disable-component-update",
+        "--disable-sync",
+        "--no-first-run",
+        "--no-default-browser-check",
+        "--disable-backgrounding-occluded-windows",
+        "--disable-renderer-backgrounding",
+        "--password-store=basic",
+        "--use-mock-keychain",
+        f"--window-size={width},{height}",
+        "--virtual-time-budget=3000",
+        f"--screenshot={out_png}",
+        url,
+    ]
+
+    proc = subprocess.Popen(
+        cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True
     )
+    try:
+        proc.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        _kill_tree(proc)
+        raise RuntimeError(f"Chrome 截图超时（{timeout:.0f}s）：t={t:.3f}")
+
+    if proc.returncode != 0:
+        raise RuntimeError(f"Chrome 退出码 {proc.returncode}：t={t:.3f}")
     if not out_png.is_file():
         raise RuntimeError(f"截图没生成：{out_png}")
     return out_png
+
+
+def _kill_tree(proc: subprocess.Popen) -> None:
+    """杀掉浏览器进程组。
+
+    Chrome 会拉起一堆子进程，只杀父进程的话它们会变成孤儿继续占着 CPU。
+    """
+    try:
+        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        proc.kill()
 
 
 def render_frames(
@@ -152,11 +180,16 @@ def render_frames(
     *,
     jobs: int = 1,
     chrome: str | None = None,
+    start_index: int = 0,
 ) -> list[Path]:
-    """按给定时刻批量渲帧，文件名按序号连续编号（ffmpeg 要连续的序列）。"""
+    """按给定时刻批量渲帧，文件名按序号连续编号（ffmpeg 要连续的序列）。
+
+    ``start_index`` 是**续渲**用的：渲到第 400 帧断了，
+    可以只补后面那几帧，编号接着往下排，不用从头再来。
+    """
     chrome = chrome or find_chrome()
     out_dir.mkdir(parents=True, exist_ok=True)
-    targets = [out_dir / f"{index:06d}.png" for index in range(len(times))]
+    targets = [out_dir / f"{start_index + index:06d}.png" for index in range(len(times))]
 
     def one(pair: tuple[float, Path]) -> Path:
         t, path = pair
@@ -310,6 +343,10 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--stills", nargs="+", type=float, metavar="T")
     parser.add_argument("--motion", nargs=2, type=float, metavar=("T0", "T1"))
     parser.add_argument("--det", action="store_true")
+    parser.add_argument(
+        "--frames", nargs=2, type=int, metavar=("START", "END"),
+        help="只渲这一段帧号（续渲用），不重新编码",
+    )
     parser.add_argument("--jobs", type=int, default=1)
     parser.add_argument("--serve", action="store_true", help="起本地服务器预览")
     args = parser.parse_args(argv[1:])
@@ -368,6 +405,19 @@ def main(argv: list[str]) -> int:
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy(out, target)
         print(f"转场检查图：{target}")
+        return 0
+
+    if args.frames:
+        start_frame, end_frame = args.frames
+        count = end_frame - start_frame
+        times = [start_frame / fps + index / fps for index in range(count)]
+        frames_dir = film_dir / "out" / "frames"
+        frames_dir.mkdir(parents=True, exist_ok=True)
+        print(f"续渲 {count} 帧（帧号 {start_frame}–{end_frame - 1}）…")
+        render_frames(
+            html, frames_dir, times, width, height, jobs=args.jobs, start_index=start_frame
+        )
+        print(f"帧目录：{frames_dir}")
         return 0
 
     start, end = (args.clip or (0.0, duration))
