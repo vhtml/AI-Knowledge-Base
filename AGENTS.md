@@ -1,6 +1,6 @@
 # AGENTS.md
 
-个人 AI 知识库仓库。`AI/` `Business/` `Finance/` 沉淀知识笔记，`Demos/` 存放所有可运行的代码。
+个人 AI 知识库仓库。`AI/` `Business/` `Finance/` 沉淀知识笔记，`Demos/` 存放与教程配套的可运行实验。
 
 ## 目录职责
 
@@ -8,10 +8,12 @@
 | --- | --- | --- |
 | `AI/` `Business/` `Finance/` | 按领域分类的知识笔记 | 不放可运行代码，不放密钥 |
 | `Projects/` | 独立项目工作区，一个项目一个子目录 | |
-| `Demos/` | **唯一的代码区**：依赖、`.env`、`.venv` 都在这一层 | 代码不散落到别处 |
+| `Demos/` | **学习实验区**：依赖、`.env`、`.venv` 都在这一层 | `examples/` 下每个目录都对应一份可跑的学习材料 |
+| `scripts/` | 仓库维护脚本（校验、检查），一个工具一个文件 | 不放示例代码，不引入第三方依赖 |
 | `docs/` | 方案与计划文档 | |
 
 - `Demos/examples/` 下每个示例一个目录，自带 README 写清"怎么跑"；带前端的服务按 `backend/` 与 `frontend/` 分离
+- `scripts/` 是**单文件工具**区，不进 `Demos/examples/`——那里的每个目录都该是一份能跑起来的学习材料，维护脚本不属于这一类
 - 空目录里放一个 `.gitkeep`——空目录也要能被 git 跟踪，否则 clone 出来就散架了
 - 笔记里不放大段可运行代码；代码也不写进笔记
 
@@ -20,6 +22,7 @@
 - Python 3.13，用 `uv` 管理依赖（`Demos/pyproject.toml`）；前端用 npm
 - 依赖装在 `Demos/` 这一层：`cd Demos && uv sync`
 - 跑示例统一在 `Demos/examples` 下：`uv run --project .. python -m <包>`
+- 跑仓库维护脚本统一在仓库根：`python3 scripts/<工具>.py`（只用标准库，不依赖 `Demos/` 的环境）
 - 各示例的具体启动命令写在它自己的 README 里，不在这里重复
 - 架构图以 `.drawio` 为可编辑源头，`.svg` / `.png` 由它渲染——改图改 `.drawio`
 

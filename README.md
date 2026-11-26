@@ -18,7 +18,8 @@
 | `Business/` | 商业知识：Growth / Marketing / Pricing / SaaS / Sales | 骨架 |
 | `Finance/` | 金融知识：Macro / Equity / Portfolio / Valuation | 骨架 |
 | `Projects/` | 独立项目工作区，一个项目一个子目录 | 骨架 |
-| `Demos/` | **唯一的代码区**：Python 依赖、`.env`、`.venv` 都在这一层 | `examples/` 13 个示例 + `langgraph-demo/` |
+| `Demos/` | **学习实验区**：Python 依赖、`.env`、`.venv` 都在这一层 | `examples/` 13 个示例 + `langgraph-demo/` |
+| `scripts/` | 仓库维护脚本（校验、检查），一个工具一个文件 | `check_notes.py` |
 | `docs/` | 方案与计划文档 | `superpowers/plans/` |
 
 `AI/` `Business/` `Finance/` `Projects/` 下每个分类目录都带 `.gitkeep`——
@@ -42,7 +43,6 @@
 | `Demos/examples/life_assistant/` | 三工具 Agent | **工具选择**与**参数校验** | `python -m life_assistant.selftest` |
 | `Demos/examples/skill_lab/` | Skill 制作七天教程 | 7 个可运行实验 + 校验脚本 + 毕业作品 | `python -m skill_lab.selftest` |
 | `Demos/examples/vibe_film_lab/` | **Vibe 知识动画教程实验（12 章）** | 形象/事实/分镜三件套 + 纯函数渲染管线 + 毕业成片 | `python -m vibe_film_lab.selftest` |
-| `Demos/examples/notes_check/` | **教程笔记结构校验** | 查链接失效、表格错位、代码围栏未闭合 | `python -m notes_check` |
 | `Demos/examples/skills/` | 最小 skill 样例 | 一个 SKILL.md 长什么样 | — |
 | `Demos/examples/retry-demo/` | 重试与熔断 | 指数退避、熔断器 | — |
 | `Demos/examples/log-demo/` | 日志分级落盘 | loguru 分级 + 轮转 | — |
@@ -96,12 +96,12 @@ uv run --project .. python -m skill_lab.selftest  # 自检
 ### 校验教程笔记结构
 
 ```bash
-cd Demos/examples
-uv run --project .. python -m notes_check
+python3 scripts/check_notes.py            # 在仓库根目录执行
+python3 scripts/check_notes.py --verbose  # 逐项列出检查项
 ```
 
 纯离线检查：链接是否失效、表格列数是否错位、代码围栏是否闭合、索引是否覆盖全部章节。
-改了 `AI/AI-Product/` 下的笔记后跑一遍，比通读一遍快。
+改了 `AI/AI-Product/` 下的笔记后跑一遍，比通读一遍快。只用标准库，不依赖 `Demos/` 的环境。
 
 ### 跑 AI Infra 推理服务教程实验
 
@@ -146,7 +146,6 @@ uv run --project .. python -m life_assistant.selftest
 uv run --project .. python -m study_planner.backend.selftest
 uv run --project .. python -m skill_lab.selftest
 uv run --project .. python -m langgraph_lab.selftest
-uv run --project .. python -m notes_check
 uv run --project .. python -m vibe_film_lab.selftest
 
 # 毕业作品自检
@@ -173,7 +172,7 @@ cd Demos/examples/rag-demo && uv run --project ../.. python -m backend.rag eval
 
 要点：
 
-- `Demos/` 是唯一的代码区，笔记里不放大段可运行代码
+- `Demos/` 是学习实验区（`examples/` 里每个目录都对应一份可跑的材料），`scripts/` 放仓库维护脚本
 - 从 `main` 切分支，不直接推 `main`
 - 提交信息用中文，一句话说清目的，必要时带范围前缀（`chat_cli: 超预算时截断摘要而非丢弃`）
 - 一个提交只做一件事；每完成一个实现就立刻提交，不要攒到最后
