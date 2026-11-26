@@ -198,6 +198,84 @@ def check_no_placeholder_left() -> Report:
     return report
 
 
+def split_cells(line: str) -> list[str]:
+    """拆一行表格的单元格。
+
+    要同时躲开两种情况：单元格里的转义竖线 ``\\|``，以及行内代码里的竖线
+    （`|error` 这种）。所以不能直接 str.split("|")。
+    """
+    cells: list[str] = []
+    current: list[str] = []
+    in_code = False
+    escaped = False
+    for char in line.strip():
+        if escaped:
+            current.append(char)
+            escaped = False
+        elif char == "\\":
+            current.append(char)
+            escaped = True
+        elif char == "`":
+            in_code = not in_code
+            current.append(char)
+        elif char == "|" and not in_code:
+            cells.append("".join(current))
+            current = []
+        else:
+            current.append(char)
+    cells.append("".join(current))
+    if cells and not cells[0].strip():
+        cells = cells[1:]
+    if cells and not cells[-1].strip():
+        cells = cells[:-1]
+    return cells
+
+
+def check_table_integrity() -> Report:
+    """每张表的列数一致，且第二行是分隔行。
+
+    笔记里的表是主要信息载体，列数错位比少写一句话更难读，
+    而且渲染出来很难一眼看出问题在哪，所以值得单独查一道。
+    """
+    report = Report("表格完整性")
+    base = notes_dir()
+    for path in sorted(base.glob("*.md")):
+        in_fence = False
+        block: list[tuple[int, str]] = []
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if line.strip().startswith("```"):
+                in_fence = not in_fence
+                if block:
+                    report.problems.extend(_table_problems(path.name, block))
+                    block = []
+                continue
+            if in_fence:
+                continue
+            if line.strip().startswith("|"):
+                block.append((number, line))
+            elif block:
+                report.problems.extend(_table_problems(path.name, block))
+                block = []
+        if block:
+            report.problems.extend(_table_problems(path.name, block))
+    return report
+
+
+def _table_problems(name: str, block: list[tuple[int, str]]) -> list[str]:
+    """检查一段连续表格行的列数是否自洽。"""
+    problems: list[str] = []
+    widths = {number: len(split_cells(line)) for number, line in block}
+    distinct = set(widths.values())
+    if len(distinct) > 1:
+        detail = "、".join(f"第 {number} 行 {width} 列" for number, width in widths.items())
+        problems.append(f"{name} 的表格列数不一致：{detail}")
+    if len(block) >= 2:
+        separator = split_cells(block[1][1])
+        if not all(set(cell.strip()) <= set("-: ") and "-" in cell for cell in separator):
+            problems.append(f"{name} 第 {block[1][0]} 行不是表格分隔行")
+    return problems
+
+
 CHECKS = (
     check_files_exist,
     check_chapter_structure,
@@ -206,6 +284,7 @@ CHECKS = (
     check_relative_links,
     check_index_covers_all,
     check_no_placeholder_left,
+    check_table_integrity,
 )
 
 
