@@ -19,7 +19,7 @@
 | `Finance/` | 金融知识：Macro / Equity / Portfolio / Valuation | 骨架 |
 | `Projects/` | 独立项目工作区，一个项目一个子目录 | 骨架 |
 | `Demos/` | **学习实验区**：Python 依赖、`.env`、`.venv` 都在这一层 | `examples/` 13 个示例 + `langgraph-demo/` |
-| `scripts/` | 仓库维护脚本（校验、检查），一个工具一个文件 | `check_notes.py` |
+| `scripts/` | 仓库维护脚本（校验、检查），一个工具一个文件 | `check_ai_product_notes.py` |
 | `docs/` | 方案与计划文档 | `superpowers/plans/` |
 
 `AI/` `Business/` `Finance/` `Projects/` 下每个分类目录都带 `.gitkeep`——
@@ -96,8 +96,8 @@ uv run --project .. python -m skill_lab.selftest  # 自检
 ### 校验教程笔记结构
 
 ```bash
-python3 scripts/check_notes.py            # 在仓库根目录执行
-python3 scripts/check_notes.py --verbose  # 逐项列出检查项
+python3 scripts/check_ai_product_notes.py            # 在仓库根目录执行
+python3 scripts/check_ai_product_notes.py --verbose  # 逐项列出检查项
 ```
 
 纯离线检查：链接是否失效、表格列数是否错位、代码围栏是否闭合、索引是否覆盖全部章节。

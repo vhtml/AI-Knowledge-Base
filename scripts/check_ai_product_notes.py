@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""校验教程笔记的结构完整性。
+"""校验 AI 产品经理教程（`AI/AI-Product/`）笔记的结构完整性。
 
-这个脚本解决什么问题：仓库里的教程笔记是**手工维护的长文档**，
+这个脚本解决什么问题：`AI/AI-Product/` 这套教程是**手工维护的长文档**，
 最容易坏在四处——链接指向了不存在的文件、表格列数错位、代码围栏没闭合、占位符忘了删。
 这些错误肉眼看一遍很难发现，但会让读者在某个链接上白跑一趟。
 
 它是纯只读检查：不联网、不调模型、不写任何文件，只用标准库。
 
 用法：
-    python3 scripts/check_notes.py              # 在仓库根目录执行
-    python3 scripts/check_notes.py --verbose    # 逐项列出检查项
+    python3 scripts/check_ai_product_notes.py              # 在仓库根目录执行
+    python3 scripts/check_ai_product_notes.py --verbose    # 逐项列出检查项
 
 退出码 0 表示全部通过，1 表示有检查项失败。
 """

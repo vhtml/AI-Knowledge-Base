@@ -83,10 +83,10 @@ AI 产品经理要练的是判断，而判断只能对着**自己的真实数据
 围栏没闭合），不是替你做练习：
 
 ```bash
-python3 scripts/check_notes.py   # 在仓库根目录执行
+python3 scripts/check_ai_product_notes.py   # 在仓库根目录执行
 ```
 
-详见 [`scripts/check_notes.py`](../../scripts/check_notes.py)。
+详见 [`scripts/check_ai_product_notes.py`](../../scripts/check_ai_product_notes.py)。
 
 **一条纪律**：练习不写完，第三章的判据就只是你读过的文字。
 **写下来的东西才算数**——包括那个被否掉的场景，和那份你觉得"我大概知道"的风险清单。
@@ -128,7 +128,7 @@ python3 scripts/check_notes.py   # 在仓库根目录执行
 | 位置 | 作用 |
 | --- | --- |
 | `AI/AI-Product/` | 本教程，产品侧原理与模板 |
-| [`scripts/check_notes.py`](../../scripts/check_notes.py) | 笔记结构校验器：查链接失效、表格错位、围栏未闭合 |
+| [`scripts/check_ai_product_notes.py`](../../scripts/check_ai_product_notes.py) | 笔记结构校验器：查链接失效、表格错位、围栏未闭合 |
 | [`AI/LangGraph/`](../LangGraph/) | 工程侧教程：怎么把 Agent 变成可持久化、可中断的状态机 |
 | [`AI/Skill/`](../Skill/) | 技能封装教程：怎么把一段人肉经验变成 Agent 能自动加载的工作手册 |
 | `Demos/examples/study_planner/` | 本仓库的 Agent 实战场景，会话与记忆设计可与第 8 章对照 |
