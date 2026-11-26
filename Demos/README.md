@@ -31,7 +31,7 @@ cd Demos && uv sync
 | `examples/study_planner/` | 学习规划师（SSE 流式 + 记忆系统） | 对话流、目标与待办、**记忆分层与检索** | `python -m study_planner.backend.selftest` |
 | `examples/life_assistant/` | 三工具 Agent | **工具选择**与**参数校验** | `python -m life_assistant.selftest` |
 | `examples/skill_lab/` | Skill 制作七天教程 | 7 个可运行实验 + 校验脚本 + 毕业作品 | `python -m skill_lab.selftest` |
-| `examples/ai_pm_lab/` | AI 产品经理八周教程实验 | 场景打分、评测门禁、单位经济、风险登记册 | `python -m ai_pm_lab selftest` |
+| `examples/notes_check/` | 教程笔记结构校验 | 查链接失效、表格错位、代码围栏未闭合 | `python -m notes_check` |
 | `examples/skills/` | 最小 skill 样例 | 一个 SKILL.md 长什么样 | — |
 | `examples/retry-demo/` | 重试与熔断 | 指数退避、熔断器 | — |
 | `examples/log-demo/` | 日志分级落盘 | loguru 分级 + 轮转 | — |
@@ -76,13 +76,12 @@ uv run --project .. python -m agent_lab.capstone.selftest
 
 ```bash
 uv run --project .. python -m skill_lab all        # 七天全跑
-uv run --project .. python -m ai_pm_lab all         # 八周全跑
 uv run --project .. python -m chat_cli.selftest
 uv run --project .. python -m life_assistant.selftest
 uv run --project .. python -m study_planner.backend.selftest
 uv run --project .. python -m skill_lab.selftest
 uv run --project .. python -m langgraph_lab.selftest
-uv run --project .. python -m ai_pm_lab selftest
+uv run --project .. python -m notes_check
 ```
 
 ---

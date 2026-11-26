@@ -42,7 +42,7 @@
 | `Demos/examples/life_assistant/` | 三工具 Agent | **工具选择**与**参数校验** | `python -m life_assistant.selftest` |
 | `Demos/examples/skill_lab/` | Skill 制作七天教程 | 7 个可运行实验 + 校验脚本 + 毕业作品 | `python -m skill_lab.selftest` |
 | `Demos/examples/vibe_film_lab/` | **Vibe 知识动画教程实验（12 章）** | 形象/事实/分镜三件套 + 纯函数渲染管线 + 毕业成片 | `python -m vibe_film_lab.selftest` |
-| `Demos/examples/ai_pm_lab/` | **AI 产品经理八周教程实验（16 章）** | 场景打分、评测门禁、单位经济、风险登记册 | `python -m ai_pm_lab selftest` |
+| `Demos/examples/notes_check/` | **教程笔记结构校验** | 查链接失效、表格错位、代码围栏未闭合 | `python -m notes_check` |
 | `Demos/examples/skills/` | 最小 skill 样例 | 一个 SKILL.md 长什么样 | — |
 | `Demos/examples/retry-demo/` | 重试与熔断 | 指数退避、熔断器 | — |
 | `Demos/examples/log-demo/` | 日志分级落盘 | loguru 分级 + 轮转 | — |
@@ -93,14 +93,15 @@ uv run --project .. python -m skill_lab.selftest  # 自检
 
 全部实验离线运行：不联网、不消耗 token、不调用模型。跑挂了就是没学会。
 
-### 跑 AI 产品经理教程实验
+### 校验教程笔记结构
 
 ```bash
 cd Demos/examples
-uv run --project .. python -m ai_pm_lab all        # 八周全跑
-uv run --project .. python -m ai_pm_lab week3       # 只跑第 3 周
-uv run --project .. python -m ai_pm_lab selftest    # 自检
+uv run --project .. python -m notes_check
 ```
+
+纯离线检查：链接是否失效、表格列数是否错位、代码围栏是否闭合、索引是否覆盖全部章节。
+改了 `AI/AI-Product/` 下的笔记后跑一遍，比通读一遍快。
 
 ### 跑 AI Infra 推理服务教程实验
 
@@ -145,7 +146,7 @@ uv run --project .. python -m life_assistant.selftest
 uv run --project .. python -m study_planner.backend.selftest
 uv run --project .. python -m skill_lab.selftest
 uv run --project .. python -m langgraph_lab.selftest
-uv run --project .. python -m ai_pm_lab selftest
+uv run --project .. python -m notes_check
 uv run --project .. python -m vibe_film_lab.selftest
 
 # 毕业作品自检
@@ -185,7 +186,7 @@ cd Demos/examples/rag-demo && uv run --project ../.. python -m backend.rag eval
 - 想学 **Agent 开发（从零手写，不依赖框架）** → [`AI/Agent/`](AI/Agent/README.md)，配 `Demos/examples/agent_lab/`
 - 想补 **模型 API 地基** → [`AI/LLM/`](AI/LLM/README.md)，配 `Demos/examples/llm_lab/`
 - 想学 **AI Infra 推理服务**（显存账、KV cache、连续批处理、量化、调度、容量规划）→ [`AI/AI-Infra/`](AI/AI-Infra/README.md)，配 `Demos/examples/infra_lab/`
-- 想学 **AI 产品经理** → [`AI/AI-Product/`](AI/AI-Product/README.md)，配 `Demos/examples/ai_pm_lab/`
+- 想学 **AI 产品经理** → [`AI/AI-Product/`](AI/AI-Product/README.md)（纯笔记教程，每章带一个纸上练习）
 - 想学 **Skill 怎么写** → [`AI/Skill/`](AI/Skill/README.md)，配 `Demos/examples/skill_lab/`
 - 想学 **LangGraph 及其生态** → [`AI/LangGraph/`](AI/LangGraph/README.md)，配 `Demos/examples/langgraph_lab/`
 - 想学**知识动画（Vibe 知识）怎么从稿子做到成片** → [`AI/Knowledge-Film/`](AI/Knowledge-Film/README.md)，配 `Demos/examples/vibe_film_lab/`
