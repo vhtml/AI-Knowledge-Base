@@ -1,13 +1,17 @@
+#!/usr/bin/env python3
 """校验教程笔记的结构完整性。
 
-这个模块解决什么问题：教程的十六章正文、四个附录和索引是一份**手工维护的长文档**，
+这个脚本解决什么问题：仓库里的教程笔记是**手工维护的长文档**，
 最容易坏在四处——链接指向了不存在的文件、表格列数错位、代码围栏没闭合、占位符忘了删。
 这些错误肉眼看一遍很难发现，但会让读者在某个链接上白跑一趟。
 
-它是纯只读检查：不联网、不调模型、不写任何文件。
+它是纯只读检查：不联网、不调模型、不写任何文件，只用标准库。
+
 用法：
-    cd Demos/examples
-    uv run --project .. python -m notes_check
+    python3 scripts/check_notes.py              # 在仓库根目录执行
+    python3 scripts/check_notes.py --verbose    # 逐项列出检查项
+
+退出码 0 表示全部通过，1 表示有检查项失败。
 """
 from __future__ import annotations
 
@@ -17,7 +21,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import unquote
 
-# 教程的章节清单：文件名 → 标题。附录与索引单列。
+# 被校验的教程：十六章 + 四份附录 + 索引。
+# 新增章节时同步改这里——这是校验器与文档之间的唯一契约。
+NOTES_DIR = Path("AI") / "AI-Product"
+
 CHAPTER_FILES = (
     "01-AI 产品经理的角色、能力模型与边界.md",
     "02-技术地基：模型能力边界、上下文与推理参数.md",
@@ -77,12 +84,12 @@ def repo_root() -> Path:
     for candidate in Path(__file__).resolve().parents:
         if (candidate / "AGENTS.md").is_file():
             return candidate
-    return Path(__file__).resolve().parents[3]
+    return Path(__file__).resolve().parents[1]
 
 
 def notes_dir() -> Path:
     """被校验的教程目录。"""
-    return repo_root() / "AI" / "AI-Product"
+    return repo_root() / NOTES_DIR
 
 
 def check_files_exist() -> Report:
@@ -265,24 +272,14 @@ CHECKS = (
 )
 
 
-def check_all() -> list[Report]:
-    """跑完全部检查项。"""
-    return [check() for check in CHECKS]
-
-
-def assert_all_passed() -> None:
-    """给自检用：任何一项不过就抛断言错误。"""
-    for report in check_all():
-        assert report.passed, f"{report.name}：" + "；".join(report.problems)
-
-
-def run() -> int:
-    """独立运行时的入口。"""
-    reports = check_all()
+def run(verbose: bool = False) -> int:
+    """跑完全部检查项，返回退出码。"""
+    reports = [check() for check in CHECKS]
     failures = 0
     for report in reports:
         if report.passed:
-            print(f"  ✓ {report.name}")
+            if verbose:
+                print(f"  ✓ {report.name}")
         else:
             failures += 1
             print(f"  ✗ {report.name} —— {'；'.join(report.problems)}")
@@ -295,5 +292,14 @@ def run() -> int:
     return 0
 
 
+def main(argv: list[str]) -> int:
+    """命令行入口，返回进程退出码。"""
+    if "-h" in argv[1:] or "--help" in argv[1:]:
+        print(__doc__)
+        return 0
+    print(f"教程笔记结构校验 · {NOTES_DIR}")
+    return run(verbose="--verbose" in argv[1:])
+
+
 if __name__ == "__main__":
-    sys.exit(run())
+    sys.exit(main(sys.argv))
