@@ -11,6 +11,11 @@
 （画面里有没有东西伸进字幕区、主体是不是只有一个），
 在实验里以"人工确认项"列出——**说清楚哪些没验过**比假装全过了更有用。
 
+八道门槛查的对象是**成片自己**：分镜表和事实表来自
+``capstone/fourier_C/storyboard.md``，字幕、场景、配置来自
+``capstone/fourier_C/film.js``。没有样例数据参与判定——
+查样例只能证明检查器能跑，查真片才能证明片子没问题。
+
 对应笔记：AI/Knowledge-Film/11-终检门槛.md
 """
 
@@ -25,10 +30,8 @@ from ..labkit import (
     band_ratio,
     ensure,
     fact_audit,
-    fixtures_dir,
     fmt_table,
-    load_json,
-    load_storyboard,
+    load_markdown_storyboard,
     parse_film_config,
     parse_film_scenes,
     parse_film_subs,
@@ -36,7 +39,9 @@ from ..labkit import (
     three_questions,
 )
 
-FILM_JS = Path(__file__).resolve().parents[1] / "capstone" / "fourier_C" / "film.js"
+PROJECT = Path(__file__).resolve().parents[1] / "capstone" / "fourier_C"
+FILM_JS = PROJECT / "film.js"
+STORYBOARD_MD = PROJECT / "storyboard.md"
 
 MANUAL_CHECKS = (
     "字幕区（纵向 80%–95%）没有别的东西",
@@ -60,20 +65,24 @@ class Gate:
 
 def check_all(
     shots: list[Shot],
-    cues: list[dict],
     facts: list[Fact],
     film_subs: list[dict],
     scenes: list[dict],
     config: dict,
     references: list[str],
 ) -> list[Gate]:
-    """跑完八道门槛。"""
+    """跑完八道门槛。
+
+    八道门槛的对象全是**成片自己**：分镜表和事实表来自
+    ``capstone/fourier_C/storyboard.md``，字幕、场景、配置来自
+    ``capstone/fourier_C/film.js``。没有样例数据参与判定。
+    """
     gates: list[Gate] = []
-    stats = script_stats(cues)
+    stats = script_stats(film_subs)
 
     # 1 讲解：成片和分镜表对得上 + 三问齐
-    aligned = len(film_subs) == len(cues) and all(
-        film["text"] == cue["text"] for film, cue in zip(film_subs, cues)
+    aligned = len(film_subs) == len(shots) and all(
+        film["text"] == shot.subtitle for film, shot in zip(film_subs, shots)
     )
     three_ok = all(not three_questions(shot) for shot in shots)
     gates.append(Gate(
@@ -92,8 +101,8 @@ def check_all(
 
     # 3 结构
     duration = float(config.get("DUR", 0))
-    title_ok = len(film_subs) == len(cues)
-    last_cue = cues[-1]["text"] if cues else ""
+    title_ok = len(film_subs) == len(shots)
+    last_cue = film_subs[-1]["text"] if film_subs else ""
     gates.append(Gate(
         "结构",
         title_ok and bool(references) and ("1822" in last_cue or "片名" in last_cue),
@@ -123,7 +132,7 @@ def check_all(
     # 6 节奏
     gaps = []
     cursor = 0.0
-    for cue in cues:
+    for cue in film_subs:
         if cue["t"] - cursor > 0.05:
             gaps.append(cue["t"] - cursor)
         cursor = max(cursor, cue["t"] + cue["hold"])
@@ -138,7 +147,7 @@ def check_all(
     ))
 
     # 7 事实
-    problems = fact_audit(cues, facts)
+    problems = fact_audit(film_subs, facts)
     illustrative_ok = all(f.source.strip() for f in facts)
     gates.append(Gate(
         "事实",
@@ -165,25 +174,19 @@ def run() -> None:
     print("第 11 章 · 终检：八道门槛")
     print("=" * 78)
 
-    shots = load_storyboard(fixtures_dir() / "storyboard.json")
-    script = load_json(fixtures_dir() / "script.json")
-    facts_raw = load_json(fixtures_dir() / "facts.json")
-    facts = [
-        Fact(key=item["key"], value=item["value"], source=item["source"],
-             illustrative=item.get("illustrative", False),
-             on_screen=item.get("on_screen", True))
-        for item in facts_raw["facts"]
-    ]
+    storyboard = load_markdown_storyboard(STORYBOARD_MD)
+    shots = storyboard.shots
+    facts = storyboard.facts
     film_subs = parse_film_subs(FILM_JS)
     scenes = parse_film_scenes(FILM_JS)
     config = parse_film_config(FILM_JS)
 
     gates = check_all(
-        shots, script["cues"], facts, film_subs, scenes, config, facts_raw["references"]
+        shots, facts, film_subs, scenes, config, storyboard.references
     )
 
     print()
-    print("【1】样片的终检结果")
+    print("【1】成片的终检结果")
     print(fmt_table(
         ["门槛", "结果", "说明"],
         [
@@ -193,7 +196,7 @@ def run() -> None:
     ))
 
     failed = [gate for gate in gates if not gate.ok]
-    ensure(not failed, f"样片没过终检：{[gate.name for gate in failed]}")
+    ensure(not failed, f"成片没过终检：{[gate.name for gate in failed]}")
 
     print()
     print("【2】人工确认项（实验查不了，但交片时必须过）")
@@ -215,7 +218,7 @@ def run() -> None:
     ]
     broken_facts = [Fact(key="年份", value="1822", source="出处", illustrative=False)]
     broken_gates = check_all(
-        broken_shots, broken_cues, broken_facts, [], [], {"DUR": "10"}, []
+        broken_shots, broken_facts, broken_cues, [], {"DUR": "10"}, []
     )
     for gate in broken_gates:
         print(f"  {'✓' if gate.ok else '✗'} {gate.name}：{gate.detail}")

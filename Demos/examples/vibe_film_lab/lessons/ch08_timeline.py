@@ -20,9 +20,7 @@ from pathlib import Path
 
 from ..labkit import (
     ensure,
-    fixtures_dir,
     fmt_table,
-    load_json,
     parse_film_config,
     parse_film_subs,
 )

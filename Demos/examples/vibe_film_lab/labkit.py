@@ -54,7 +54,6 @@ __all__ = [
     "validate_storyboard",
     "band_ratio",
     "repo_root",
-    "fixtures_dir",
 ]
 
 # ---------------------------------------------------------------- 颜色标记
@@ -159,11 +158,6 @@ def print_table(
 def repo_root() -> Path:
     """仓库根目录。"""
     return Path(__file__).resolve().parents[4]
-
-
-def fixtures_dir() -> Path:
-    """实验室素材目录。"""
-    return Path(__file__).resolve().parent / "fixtures"
 
 
 def load_json(path: Path) -> Any:
@@ -537,7 +531,7 @@ _CONFIG_RE = re.compile(r"const CONFIG = \{(.*?)\n\};", re.S)
 def parse_film_subs(path: Path) -> list[dict[str, Any]]:
     """从 film.js 里读出字幕表。
 
-    用正则读而不是跑 node：实验室只依赖标准库 + Chrome + ffmpeg，
+    用正则读而不是跑 node：实验室只依赖标准库 + ego lite + ffmpeg，
     多一个运行时依赖就多一处装不上的风险。
     """
     source = path.read_text(encoding="utf-8")
@@ -621,3 +615,141 @@ def fact_audit(cues: list[dict[str, Any]], facts: list[Fact]) -> list[str]:
             problems.append(f"字幕里的 {token} 在事实表里查不到出处")
 
     return problems
+
+
+# ---------------------------------------------------------------- Markdown 分镜表
+
+
+@dataclass(frozen=True)
+class Storyboard:
+    """一份 Markdown 分镜表读出来的全部内容。
+
+    Markdown 分镜表是**唯一真相**：镜头、事实、时间轴、文献都写在一张表里，
+    渲染代码必须和它逐字一致——分镜表改了，``film.js`` 必须跟着改，
+    改完不跑终检，门槛会把这件事报出来。
+    """
+
+    shots: list[Shot]
+    facts: list[Fact]
+    timeline: list[dict[str, Any]]
+    references: list[str]
+    topic: str
+    thesis: str
+
+
+def _markdown_tables(text: str) -> list[tuple[list[str], list[list[str]]]]:
+    """把 Markdown 里的表格拆成 ``(表头, 数据行)`` 的列表。
+
+    只认表格里第一行是表头、第二行是分隔线的那种写法；
+    代码块里的 ``|`` 不算表格。
+    """
+    tables: list[tuple[list[str], list[list[str]]]] = []
+    header: list[str] | None = None
+    rows: list[list[str]] = []
+    in_code = False
+
+    def flush() -> None:
+        nonlocal header, rows
+        if header is not None and rows:
+            tables.append((header, rows))
+        header = None
+        rows = []
+
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            in_code = not in_code
+            continue
+        if in_code or not stripped.startswith("|"):
+            flush()
+            continue
+        cells = [cell.strip() for cell in stripped.strip("|").split("|")]
+        if all(cell and set(cell) <= set("-: ") for cell in cells):
+            continue  # 表头下面的分隔线
+        if header is None:
+            header = cells
+        else:
+            rows.append(cells)
+    flush()
+    return tables
+
+
+def _parse_seconds(text: str) -> float:
+    """从「0.60s」这样的写法里读出秒数。"""
+    match = re.search(r"\d+(?:\.\d+)?", text)
+    return float(match.group(0)) if match else 0.0
+
+
+def load_markdown_storyboard(path: Path) -> Storyboard:
+    """从 Markdown 分镜表读出镜头、事实、时间轴和文献。
+
+    分镜表里有四张内容：事实表、分镜表、时间轴、片尾文献。
+    表格的列名就是字段名，缺列就当空——宁可少信息，也不要猜。
+    """
+    text = path.read_text(encoding="utf-8")
+
+    shots: list[Shot] = []
+    facts: list[Fact] = []
+    timeline: list[dict[str, Any]] = []
+
+    for header, rows in _markdown_tables(text):
+        if header[:3] == ["镜", "字幕", "画法"]:
+            for cells in rows:
+                shots.append(Shot(
+                    index=int(cells[0]),
+                    subtitle=cells[1],
+                    method=cells[2],
+                    on_screen=cells[3],
+                    action=cells[4],
+                    takeaway=cells[6],
+                    label=cells[5],
+                    sfx=cells[7],
+                    draw=cells[2] != "不画",
+                ))
+        elif header[:2] == ["事实", "上屏的值"]:
+            for cells in rows:
+                facts.append(Fact(
+                    key=cells[0],
+                    value=cells[1],
+                    source=cells[3],
+                    illustrative=cells[2] == "示意",
+                    on_screen=cells[1] != "不上屏",
+                ))
+        elif header == ["镜", "起", "止", "停留"]:
+            for cells in rows:
+                if not cells[0].isdigit():
+                    continue  # 「—」那一行是无字幕纯画面的留白，不是字幕
+                timeline.append({
+                    "index": int(cells[0]),
+                    "start": _parse_seconds(cells[1]),
+                    "end": _parse_seconds(cells[2]),
+                    "hold": _parse_seconds(cells[3]),
+                })
+
+    references: list[str] = []
+    in_references = False
+    for line in text.splitlines():
+        if line.startswith("## "):
+            in_references = "文献" in line
+            continue
+        if in_references and line.strip().startswith("- "):
+            references.append(line.strip()[2:].strip())
+
+    topic = ""
+    match = re.search(r"选题：([^｜|]+)", text)
+    if match:
+        topic = match.group(1).strip()
+
+    thesis = ""
+    match = re.search(r"## 论点\s*\n+(.+)", text)
+    if match:
+        thesis = match.group(1).strip()
+
+    return Storyboard(
+        shots=shots,
+        facts=facts,
+        timeline=timeline,
+        references=references,
+        topic=topic,
+        thesis=thesis,
+    )

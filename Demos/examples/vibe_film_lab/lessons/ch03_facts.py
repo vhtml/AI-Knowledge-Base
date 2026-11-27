@@ -10,27 +10,37 @@
 （比如示意用的 220 Hz）。这类数字不是错，但必须标成"示意"，
 否则观众会把它当成测量结果。
 
+被检查的对象是**毕业作品自己**——分镜表里的事实表 ↔ 成片 ``film.js`` 里的字幕。
+不是拿一份样例数据自证，而是拿真片当被检查对象：
+数字进了字幕却查不到出处，或者事实表写了却没上屏，两个方向都会报出来。
+
 对应笔记：AI/Knowledge-Film/03-事实表与出处.md
 """
 
 from __future__ import annotations
 
-from ..labkit import Fact, ensure, fact_audit, fixtures_dir, fmt_table, load_json
+from pathlib import Path
+
+from ..labkit import (
+    Fact,
+    ensure,
+    fact_audit,
+    fmt_table,
+    load_markdown_storyboard,
+    parse_film_subs,
+)
+
+PROJECT = Path(__file__).resolve().parents[1] / "capstone" / "fourier_C"
+FILM_JS = PROJECT / "film.js"
+STORYBOARD_MD = PROJECT / "storyboard.md"
 
 
-def load_facts() -> list[Fact]:
-    """从事实表文件读出 :class:`Fact` 列表。"""
-    raw = load_json(fixtures_dir() / "facts.json")
-    return [
-        Fact(
-            key=item["key"],
-            value=item["value"],
-            source=item["source"],
-            illustrative=item.get("illustrative", False),
-            on_screen=item.get("on_screen", True),
-        )
-        for item in raw["facts"]
-    ]
+def _where_on_screen(value: str, subs: list[dict]) -> str:
+    """这个值出现在第几句字幕里。"""
+    for index, sub in enumerate(subs, start=1):
+        if value in sub["text"]:
+            return f"第 {index} 句"
+    return "没上屏"
 
 
 def run() -> None:
@@ -38,22 +48,22 @@ def run() -> None:
     print("第 3 章 · 事实表：每个数字都要有出处")
     print("=" * 78)
 
-    raw = load_json(fixtures_dir() / "facts.json")
-    script = load_json(fixtures_dir() / "script.json")
-    facts = load_facts()
+    storyboard = load_markdown_storyboard(STORYBOARD_MD)
+    facts = storyboard.facts
+    subs = parse_film_subs(FILM_JS)
 
     print()
-    print("【1】论点与事实表")
-    print(f"  题目：{raw['title']}（{raw['topic']}）")
-    print(f"  论点：{raw['thesis']}")
+    print(f"【1】选题：{storyboard.topic}")
+    print(f"    论点：{storyboard.thesis}")
     print()
+    print("【2】成片的事实表（来自 storyboard.md，和代码同源）")
     print(fmt_table(
         ["事实", "上屏的值", "类型", "出处"],
         [
             [
                 fact.key,
                 fact.value,
-                "示意" if fact.illustrative else "实测/史实",
+                "示意" if fact.illustrative else ("不上屏" if not fact.on_screen else "实测/史实"),
                 fact.source,
             ]
             for fact in facts
@@ -61,52 +71,37 @@ def run() -> None:
     ))
 
     print()
-    print("【2】双向核对：字幕 ↔ 事实表")
-    problems = fact_audit(script["cues"], facts)
+    print("【3】双向核对：成片字幕 ↔ 事实表")
+    print(fmt_table(
+        ["事实", "上屏的值", "出现在"],
+        [
+            [fact.key, fact.value, _where_on_screen(fact.value, subs)]
+            for fact in facts
+        ],
+    ))
+
+    problems = fact_audit(subs, facts)
     for problem in problems:
         print(f"  ✗ {problem}")
-    if not problems:
-        print("  ✓ 字幕里的每个数字都能在事实表里查到出处；")
-        print("    事实表里要上屏的数字也都出现在字幕里。")
+    ensure(not problems, f"成片没过事实双向核对：{problems}")
+    print(f"  ✓ {len(subs)} 句字幕里的每个数字都能查到出处，事实表里的数字也都上了屏。")
 
-    ensure(not problems, f"事实核对没通过：{problems}")
-
-    # ---- 故意漏一条，看看检查器抓不抓得住 ----
+    # ---- 故意做坏 ----
     print()
-    print("【3】把 1822 从字幕里删掉，检查器应该报警")
-    broken = [dict(cue) for cue in script["cues"]]
-    for cue in broken:
-        cue["text"] = cue["text"].replace("1822", "很早以前")
-    broken_problems = fact_audit(broken, facts)
-    ensure(
-        any("1822" in problem for problem in broken_problems),
-        "删掉 1822 之后应该报出'查不到出处'或'没有出现在字幕里'",
-    )
-    for problem in broken_problems:
-        print(f"  ✗ {problem}")
+    print("【4】故意做坏，看核对抓不抓得住")
+    only_year = [Fact(key="年份", value="1822", source="出处", illustrative=False)]
 
-    # ---- 示意项必须有标记 ----
-    print()
-    print("【4】示意值必须标出来")
-    illustrative = [fact for fact in facts if fact.illustrative]
-    for fact in illustrative:
-        print(f"  · {fact.value}：{fact.source}")
-    ensure(
-        all(fact.source.strip() for fact in illustrative),
-        "示意值也必须写清楚为什么是示意",
-    )
+    missing = fact_audit([{"text": "这里没有任何数字"}], only_year)
+    ensure(missing, "事实表里的数字没上屏时应该报出来")
+    print(f"  ✓ 事实表写了 1822 但字幕里没有 → 报出来：{missing[0]}")
 
-    # ---- 片尾要印文献 ----
-    print()
-    print("【5】片尾文献")
-    for reference in raw["references"]:
-        print(f"  · {reference}")
-    ensure(len(raw["references"]) >= 1, "片尾至少要有一条文献")
+    unknown = fact_audit([{"text": "这个数字是 99"}], only_year)
+    ensure(unknown, "字幕里的数字查不到出处时应该报出来")
+    print(f"  ✓ 字幕里冒出 99 但事实表没有 → 报出来：{unknown[0]}")
 
     print()
-    print("要点：知识类内容的信任是靠事实堆出来的。")
-    print("      一个没有出处的数字，观众分不清是'真的'还是'你编的'——")
-    print("      而这两者对一条知识短片的杀伤力是相反的。")
+    print("要点：反向漏最危险。事实表写了 5 个数据、字幕只用 2 个，")
+    print("      片子里就少了一个关键数据，却没人发现——所以要双向查。")
 
 
 if __name__ == "__main__":

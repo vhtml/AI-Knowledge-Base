@@ -4,10 +4,10 @@
     cd Demos/examples
     uv run --project .. python -m vibe_film_lab list         列出各章主题
     uv run --project .. python -m vibe_film_lab ch07          跑第 7 章
-    uv run --project .. python -m vibe_film_lab all           跑全部 12 章
+    uv run --project .. python -m vibe_film_lab all           跑全部 6 章实验
     uv run --project .. python -m vibe_film_lab selftest      跑自检
 
-需要本机装了 Chrome/Chromium/Edge 与 ffmpeg 才能跑渲染相关的章节；
+需要本机装了 ego lite 与 ffmpeg 才能跑渲染相关的章节；
 没装的话那几章会打印"跳过"并继续，不会中断整轮。
 """
 
@@ -70,7 +70,7 @@ def main(argv: list[str]) -> int:
     command = args[0]
 
     if command == "list":
-        print("Vibe 知识动画教程实验（12 章）：")
+        print(f"Vibe 知识动画教程实验（{len(LESSONS)} 章）：")
         for lesson in LESSONS:
             print(f"  {lesson.key}  {lesson.title}")
         return 0
