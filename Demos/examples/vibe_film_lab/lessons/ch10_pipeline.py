@@ -5,7 +5,7 @@
 
 关键结论有三个：
 - 帧数是算出来的：``时长 × 帧率``，不是"渲到满意为止"；
-- 并行是线性收益：``--jobs 4`` 大约快 3 倍（省的是 Chrome 启动开销）；
+- 并行是线性收益：``--jobs 4`` 大约快 3 倍（省的是每页的排队开销）；
 - 顺序不能反：先联络表、再静帧、再转场、最后才渲全片。
   全片渲完才发现第 40 秒有一根线穿过了字幕区，是最贵的一种返工。
 
@@ -72,7 +72,7 @@ def run() -> None:
         print("  ⊘ 跳过：本机没有 ffmpeg")
         return
 
-    from ..engine.render import ChromeNotFound, render_frames
+    from ..engine.render import BrowserNotFound, render_frames
 
     workdir = prepare_workdir()
     html = workdir / "index.html"
@@ -89,8 +89,8 @@ def run() -> None:
                     hashlib.sha256(frame.read_bytes()).hexdigest() for frame in frames
                 ]
             elapsed = time.perf_counter() - start
-        except ChromeNotFound:
-            print("  ⊘ 跳过：本机没有 Chrome/Chromium/Edge")
+        except BrowserNotFound:
+            print("  ⊘ 跳过：本机没有 ego lite")
             return
         results.append((jobs, elapsed, SAMPLE_FRAMES / elapsed))
 

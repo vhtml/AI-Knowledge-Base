@@ -9,7 +9,7 @@
 检查分两层：
 - **静态**：film.js 里不许出现 Math.random / Date.now 这类不确定性来源；
   场景表必须首尾相接铺满全片；字幕表必须和分镜表一致。
-- **动态**：同一个 t 渲两遍，逐字节比对（需要本机有 Chrome）。
+- **动态**：同一个 t 渲两遍，逐字节比对（需要本机有 ego lite）。
 
 对应笔记：AI/Knowledge-Film/07-渲染引擎.md
 """
@@ -20,16 +20,17 @@ from pathlib import Path
 
 from ..labkit import (
     ensure,
-    fixtures_dir,
     fmt_table,
-    load_json,
+    load_markdown_storyboard,
     parse_film_config,
     parse_film_scenes,
     parse_film_subs,
     strip_js_comments,
 )
 
-FILM_JS = Path(__file__).resolve().parents[1] / "capstone" / "fourier_C" / "film.js"
+PROJECT = Path(__file__).resolve().parents[1] / "capstone" / "fourier_C"
+FILM_JS = PROJECT / "film.js"
+STORYBOARD_MD = PROJECT / "storyboard.md"
 
 NONDETERMINISM_SOURCES = ("Math.random", "Date.now", "performance.now", "new Date")
 """不确定性来源。任何一个出现在画面绘制路径里，逐帧渲染就会前后不一致。"""
@@ -91,29 +92,37 @@ def run() -> None:
 
     # ---- 字幕表必须和分镜表一致 ----
     subs = parse_film_subs(FILM_JS)
-    script = load_json(fixtures_dir() / "script.json")
+    storyboard = load_markdown_storyboard(STORYBOARD_MD)
+    shots = storyboard.shots
+    timeline = {row["index"]: row for row in storyboard.timeline}
     print()
-    print("【3】film.js 的字幕表 ↔ 分镜表/文案稿")
+    print("【3】film.js 的字幕表 ↔ 分镜表（唯一真相）")
     ensure(
-        len(subs) == len(script["cues"]),
-        f"字幕条数不一致：film.js {len(subs)} 条，稿件 {len(script['cues'])} 条",
+        len(subs) == len(shots),
+        f"字幕条数不一致：film.js {len(subs)} 条，分镜表 {len(shots)} 镜",
     )
-    for index, (from_film, from_script) in enumerate(zip(subs, script["cues"]), start=1):
+    for shot, sub in zip(shots, subs):
         ensure(
-            from_film["text"] == from_script["text"],
-            f"第 {index} 句两边不一致：{from_film['text']!r} vs {from_script['text']!r}",
+            sub["text"] == shot.subtitle,
+            f"第 {shot.index} 镜两边不一致：{shot.subtitle!r} vs {sub['text']!r}",
+        )
+        row = timeline.get(shot.index)
+        ensure(row is not None, f"分镜表的时间轴里没有第 {shot.index} 镜")
+        ensure(
+            abs(sub["t"] - row["start"]) < 1e-6,
+            f"第 {shot.index} 镜起始时间不一致：film.js {sub['t']} vs 分镜表 {row['start']}",
         )
         ensure(
-            abs(from_film["t"] - from_script["t"]) < 1e-6,
-            f"第 {index} 句起始时间两边不一致：{from_film['t']} vs {from_script['t']}",
+            abs(sub["hold"] - row["hold"]) < 1e-6,
+            f"第 {shot.index} 镜停留时间不一致：film.js {sub['hold']} vs 分镜表 {row['hold']}",
         )
-    print(f"  ✓ {len(subs)} 句字幕与稿件完全一致（文案改了，film.js 必须跟着改）。")
+    print(f"  ✓ {len(subs)} 句字幕与分镜表逐字一致，起始时间和停留时间也对得上。")
 
     # ---- 动态检查：确定性 ----
     print()
     print("【4】动态检查：同一个 t 渲两遍")
     try:
-        from ..engine.render import ChromeNotFound, determinism_check
+        from ..engine.render import BrowserNotFound, determinism_check
 
         html = FILM_JS.parents[2] / "engine" / "template.html"
         workdir = Path("/tmp") / "vibe_film_lab_det"
@@ -125,8 +134,8 @@ def run() -> None:
         ok = determinism_check(workdir / "index.html", 3.0, 1920, 1080)
         ensure(ok, "同一时刻两帧不一致：画面里混进了状态，逐帧导出一定会抖")
         print("  ✓ 逐字节一致——画面里没有藏状态。")
-    except ChromeNotFound:
-        print("  ⊘ 跳过：本机没有 Chrome/Chromium/Edge，装一个再跑这条。")
+    except BrowserNotFound:
+        print("  ⊘ 跳过：本机没有 ego lite，装一个再跑这条。")
     except Exception as exc:  # noqa: BLE001 - 环境问题不该让整章失败
         print(f"  ⊘ 跳过：{type(exc).__name__}: {exc}")
 

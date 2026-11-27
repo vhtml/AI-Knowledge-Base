@@ -1,7 +1,11 @@
 """把一条短片从代码渲成 MP4。
 
 这个模块解决什么问题：把"画面是纯函数"这条规矩变成一条**可执行的流水线**。
-单路 Chrome 逐帧截图 → ffmpeg 编码，全程离线，不需要 GPU、不需要录屏。
+ego lite 逐帧截图 → ffmpeg 编码，全程离线，不需要 GPU、不需要录屏。
+
+浏览器用 **ego lite**（`ego-browser` CLI 驱动），不依赖系统里装没装 Chrome：
+视口用 CDP 的 ``Emulation.setDeviceMetricsOverride`` 钉死成目标分辨率，
+所以截出来的帧就是 1920×1080，和窗口多大无关。
 
 四个检查动作，都是实战里每天要用的：
 
@@ -28,55 +32,44 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
 import shutil
-import signal
 import subprocess
 import sys
 import tempfile
-from concurrent.futures import ThreadPoolExecutor
+import uuid
 from pathlib import Path
 
 __all__ = [
-    "ChromeNotFound",
+    "BrowserNotFound",
     "encode",
-    "find_chrome",
+    "find_browser",
     "probe",
-    "render_frame",
     "render_frames",
     "screenshot",
     "tile_sheet",
 ]
 
-CHROME_CANDIDATES = (
-    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-    "/Applications/Chromium.app/Contents/MacOS/Chromium",
-    "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
-    "/usr/bin/google-chrome",
-    "/usr/bin/chromium",
-    "/usr/bin/chromium-browser",
-)
+EGO_BROWSER_CANDIDATES = ("ego-browser",)
+"""ego lite 的命令行入口。它通过 ego lite 服务驱动浏览器，不直接拉内核。"""
 
 
-class ChromeNotFound(RuntimeError):
-    """找不到可用的 Chrome/Chromium/Edge。"""
+class BrowserNotFound(RuntimeError):
+    """找不到 ego lite 的命令行入口。"""
 
 
-def find_chrome() -> str:
-    """找浏览器可执行文件。
+def find_browser() -> str:
+    """找 ego-browser 可执行文件。
 
-    优先用系统里已经装好的 Chrome——不额外下载一份 Chromium，
-    省几百 MB，也省掉"下载被墙"这种问题。
+    渲染用的是 **ego lite**，不是系统里的 Chrome/Chromium/Edge。
+    装好 ego lite 之后 ``ego-browser`` 会在 PATH 上（默认 ``~/.local/bin``）。
     """
-    for candidate in CHROME_CANDIDATES:
-        if Path(candidate).is_file():
-            return candidate
-    for name in ("google-chrome", "chromium", "chromium-browser", "chrome"):
+    for name in EGO_BROWSER_CANDIDATES:
         found = shutil.which(name)
         if found:
             return found
-    raise ChromeNotFound(
-        "找不到 Chrome/Chromium/Edge。装一个 Chrome，或者改 CHROME_PATH 环境变量指到可执行文件。"
+    raise BrowserNotFound(
+        "找不到 ego-browser。装一下 ego lite（装完 CLI 在 ~/.local/bin/ego-browser），"
+        "或者把它的路径加进 PATH。"
     )
 
 
@@ -98,77 +91,158 @@ def _run(cmd: list[str]) -> subprocess.CompletedProcess[str]:
     return proc
 
 
+# ---------------------------------------------------------------- ego lite 驱动脚本
+
+
+_NODE_RENDER = """\
+const payload = __PAYLOAD__;
+
+const task = await taskSpace(payload.space);
+let failure = null;
+let pages = [];
+
+try {
+  for (let index = 0; index < payload.jobs; index += 1) {
+    let page;
+    if (index === 0) {
+      page = task.page("p1");
+    } else {
+      try {
+        page = await task.newPage();
+      } catch (err) {
+        break;  // 页面预算用完了，就用手上这几页
+      }
+    }
+    // 把视口钉死成目标分辨率：截出来的帧和浏览器窗口多大无关。
+    await page.cdp("Emulation.setDeviceMetricsOverride", {
+      width: payload.width,
+      height: payload.height,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+    pages.push(page);
+  }
+
+  // 按页分片，每页一条串行队列，页与页之间并行。
+  const chunks = pages.map(() => []);
+  payload.items.forEach((item, index) => chunks[index % pages.length].push(item));
+
+  await Promise.all(chunks.map(async (chunk, index) => {
+    const page = pages[index];
+    for (const item of chunk) {
+      const url = payload.base + "?t=" + item.t.toFixed(6);
+      await page.goto(url);
+      await page.waitForLoadState("load");
+      try {
+        await page.screenshot({ path: item.path });
+      } catch (err) {
+        // 截图偶尔会因为页面无响应失败，重试一次就好。
+        await page.screenshot({ path: item.path });
+      }
+    }
+  }));
+} catch (err) {
+  failure = String(err && err.stack ? err.stack : err);
+}
+
+if (!failure) {
+  await task.finish({ keep: [] });
+}
+console.log(JSON.stringify({ ok: !failure, error: failure, count: payload.items.length }));
+"""
+
+_NODE_DET = """\
+const payload = __PAYLOAD__;
+
+const task = await taskSpace(payload.space);
+let failure = null;
+
+try {
+  const page = task.page("p1");
+  await page.cdp("Emulation.setDeviceMetricsOverride", {
+    width: payload.width,
+    height: payload.height,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+  const url = payload.base + "?t=" + payload.t.toFixed(6);
+
+  await page.goto(url);
+  await page.waitForLoadState("load");
+  await page.screenshot({ path: payload.first });
+
+  // 重新加载让 JS 从头再跑一遍——这才是第二次独立的渲染。
+  // 直接 goto 同一个 URL 可能被当成没有变化，起不到"渲两遍"的作用。
+  await page.reload();
+  await page.waitForLoadState("load");
+  await page.screenshot({ path: payload.second });
+} catch (err) {
+  failure = String(err && err.stack ? err.stack : err);
+}
+
+if (!failure) {
+  await task.finish({ keep: [] });
+}
+console.log(JSON.stringify({ ok: !failure, error: failure }));
+"""
+
+
+def _run_ego(script: str, payload: dict) -> dict:
+    """把一段 Node 脚本交给 ego-browser 跑，拿回 JSON 结果。
+
+    脚本从 stdin 进去、结果从 stdout 出来，中间不经过 shell 引号，
+    所以路径里有空格、中文也不会被吃掉。
+    """
+    browser = find_browser()
+    # 每次调用开一个**独立命名**的 task space：同名空间是复用的，
+    # 两个渲染并发跑时后者会把前者的空间关掉，前者就报"空间不存在"了。
+    payload = {**payload, "space": f"vibe_film_{uuid.uuid4().hex[:12]}"}
+    source = script.replace("__PAYLOAD__", json.dumps(payload, ensure_ascii=False))
+    proc = subprocess.run(
+        [browser, "nodejs"],
+        input=source,
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(
+            f"ego-browser 退出码 {proc.returncode}：\n{proc.stderr.strip() or proc.stdout.strip()}"
+        )
+    # ego-browser 把脚本结果写进 stderr（stdout 留给浏览器侧的输出），
+    # 两个流都扫一遍，哪边有 JSON 用哪边。
+    line = ""
+    for stream in (proc.stdout, proc.stderr):
+        for candidate in reversed(stream.strip().splitlines()):
+            if candidate.strip().startswith("{"):
+                line = candidate.strip()
+                break
+        if line:
+            break
+    if not line:
+        raise RuntimeError(
+            f"ego-browser 没吐出结果：\n{proc.stdout.strip()[-800:]}\n{proc.stderr.strip()[-800:]}"
+        )
+    result = json.loads(line)
+    if not result.get("ok"):
+        raise RuntimeError(f"ego lite 渲染失败：{result.get('error')}")
+    return result
+
+
 def screenshot(
-    chrome: str,
     html: Path,
     t: float,
     out_png: Path,
     width: int,
     height: int,
-    timeout: float = 90.0,
 ) -> Path:
     """截一帧。
 
-    ``--virtual-time-budget`` 让 Chrome 把页面里的 JS 跑完再截图，
-    不加这个参数会截到一张白纸——这是最常见的"为什么渲出来是空白"。
-
-    ``timeout`` 是防挂死的兜底：Chrome 偶尔会卡住不退出（尤其是并发时），
-    没有超时的话整个渲染会永远停在这一帧上。超时会连同它拉起的
-    浏览器子进程一起杀掉（单独开进程组，否则子进程会变孤儿）。
+    单帧也走 ego lite：一次调用渲一张，和批量渲染用同一条路径，
+    免得出现"单帧能截、批量渲不出来"这种鬼故事。
     """
     out_png.parent.mkdir(parents=True, exist_ok=True)
-    url = html.resolve().as_uri() + f"?t={t:.6f}"
-    cmd = [
-        chrome,
-        "--headless=new",
-        "--disable-gpu",
-        "--hide-scrollbars",
-        "--force-device-scale-factor=1",
-        "--default-background-color=00000000",
-        "--disable-extensions",
-        "--mute-audio",
-        # 关掉一切后台网络行为：Chrome 会尝试连组件更新、变体种子等
-        # 服务，在网络不稳的机器上会拖慢甚至卡死整帧渲染。
-        "--disable-background-networking",
-        "--disable-component-update",
-        "--disable-sync",
-        "--no-first-run",
-        "--no-default-browser-check",
-        "--disable-backgrounding-occluded-windows",
-        "--disable-renderer-backgrounding",
-        "--password-store=basic",
-        "--use-mock-keychain",
-        f"--window-size={width},{height}",
-        "--virtual-time-budget=3000",
-        f"--screenshot={out_png}",
-        url,
-    ]
-
-    proc = subprocess.Popen(
-        cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True
-    )
-    try:
-        proc.wait(timeout=timeout)
-    except subprocess.TimeoutExpired:
-        _kill_tree(proc)
-        raise RuntimeError(f"Chrome 截图超时（{timeout:.0f}s）：t={t:.3f}")
-
-    if proc.returncode != 0:
-        raise RuntimeError(f"Chrome 退出码 {proc.returncode}：t={t:.3f}")
-    if not out_png.is_file():
-        raise RuntimeError(f"截图没生成：{out_png}")
+    render_frames(html, out_png.parent, [t], width, height, names=[out_png.name])
     return out_png
-
-
-def _kill_tree(proc: subprocess.Popen) -> None:
-    """杀掉浏览器进程组。
-
-    Chrome 会拉起一堆子进程，只杀父进程的话它们会变成孤儿继续占着 CPU。
-    """
-    try:
-        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-    except (ProcessLookupError, PermissionError):
-        proc.kill()
 
 
 def render_frames(
@@ -179,36 +253,34 @@ def render_frames(
     height: int,
     *,
     jobs: int = 1,
-    chrome: str | None = None,
     start_index: int = 0,
+    names: list[str] | None = None,
 ) -> list[Path]:
     """按给定时刻批量渲帧，文件名按序号连续编号（ffmpeg 要连续的序列）。
 
     ``start_index`` 是**续渲**用的：渲到第 400 帧断了，
     可以只补后面那几帧，编号接着往下排，不用从头再来。
+
+    ``names`` 给出时按它命名（单帧截图用），否则按序号连续编号。
     """
-    chrome = chrome or find_chrome()
     out_dir.mkdir(parents=True, exist_ok=True)
-    targets = [out_dir / f"{start_index + index:06d}.png" for index in range(len(times))]
-
-    def one(pair: tuple[float, Path]) -> Path:
-        t, path = pair
-        # 单帧失败重试一次：并发渲染时浏览器偶发退出是常见情况，
-        # 一次偶发失败不该让整条片子前功尽弃。
-        last_error: Exception | None = None
-        for _ in range(2):
-            try:
-                return screenshot(chrome, html, t, path, width, height)
-            except Exception as exc:  # noqa: BLE001 - 换成重试
-                last_error = exc
-        raise RuntimeError(f"渲染 t={t:.3f} 连续两次失败：{last_error}")
-
-    if jobs > 1:
-        with ThreadPoolExecutor(max_workers=jobs) as pool:
-            list(pool.map(one, zip(times, targets)))
-    else:
-        for pair in zip(times, targets):
-            one(pair)
+    if names is None:
+        names = [f"{start_index + index:06d}.png" for index in range(len(times))]
+    items = [
+        {"t": t, "path": str((out_dir / name).resolve())}
+        for t, name in zip(times, names)
+    ]
+    _run_ego(_NODE_RENDER, {
+        "base": html.resolve().as_uri(),
+        "width": width,
+        "height": height,
+        "jobs": max(1, jobs),
+        "items": items,
+    })
+    targets = [out_dir / name for name in names]
+    missing = [path for path in targets if not path.is_file()]
+    if missing:
+        raise RuntimeError(f"有 {len(missing)} 帧没生成，第一张是 {missing[0]}")
     return targets
 
 
@@ -299,12 +371,22 @@ def determinism_check(html: Path, t: float, width: int, height: int) -> bool:
     不一致说明画面里藏了状态（累加的计数、没播种的随机数、
     依赖上一帧的插值）。这种 bug 在预览里看不出来，
     只会在逐帧导出后表现为"同一段动画在片子里前后抖"。
+
+    第二次是**重新加载页面**后渲的——必须让 JS 真的从头再跑一遍，
+    否则比的是同一张图，比什么都过。
     """
-    chrome = find_chrome()
     with tempfile.TemporaryDirectory() as tmp:
         tmp_dir = Path(tmp)
-        first = screenshot(chrome, html, t, tmp_dir / "a.png", width, height)
-        second = screenshot(chrome, html, t, tmp_dir / "b.png", width, height)
+        first = tmp_dir / "a.png"
+        second = tmp_dir / "b.png"
+        _run_ego(_NODE_DET, {
+            "base": html.resolve().as_uri(),
+            "width": width,
+            "height": height,
+            "t": t,
+            "first": str(first),
+            "second": str(second),
+        })
         digest_a = hashlib.sha256(first.read_bytes()).hexdigest()
         digest_b = hashlib.sha256(second.read_bytes()).hexdigest()
     return digest_a == digest_b
@@ -314,7 +396,7 @@ def _read_config(html_dir: Path) -> tuple[int, int, int, float]:
     """从 film.js 里读 CONFIG。
 
     用正则读而不是跑 node：少一个运行时依赖，实验室就能只用
-    标准库 + Chrome + ffmpeg 跑起来。
+    标准库 + ego lite + ffmpeg 跑起来。
     """
     source = (html_dir / "film.js").read_text(encoding="utf-8")
     import re
